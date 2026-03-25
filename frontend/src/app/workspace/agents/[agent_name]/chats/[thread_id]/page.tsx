@@ -2,7 +2,7 @@
 
 import { BotIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,16 @@ export default function AgentChatPage() {
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+
+  useEffect(() => {
+    if (
+      !isNewThread &&
+      thread.error instanceof Error &&
+      /thread .*not found|404/i.test(thread.error.message)
+    ) {
+      router.replace(`/workspace/agents/${agent_name}/chats/new`);
+    }
+  }, [agent_name, isNewThread, router, thread.error]);
 
   return (
     <ThreadContext.Provider value={{ thread }}>

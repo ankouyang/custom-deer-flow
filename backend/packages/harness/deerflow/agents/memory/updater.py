@@ -59,9 +59,9 @@ def _create_empty_memory() -> dict[str, Any]:
     }
 
 
-# Per-agent memory cache: keyed by agent_name (None = global)
-# Value: (memory_data, file_mtime)
-_memory_cache: dict[str | None, tuple[dict[str, Any], float | None]] = {}
+# Per-file memory cache.
+# Keyed by fully-resolved memory file path so different workspaces do not share cache.
+_memory_cache: dict[str, tuple[dict[str, Any], float | None]] = {}
 
 
 def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
@@ -77,6 +77,7 @@ def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
         The memory data dictionary.
     """
     file_path = _get_memory_file_path(agent_name)
+    cache_key = str(file_path.resolve())
 
     # Get current file modification time
     try:
@@ -84,12 +85,12 @@ def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
     except OSError:
         current_mtime = None
 
-    cached = _memory_cache.get(agent_name)
+    cached = _memory_cache.get(cache_key)
 
     # Invalidate cache if file has been modified or doesn't exist
     if cached is None or cached[1] != current_mtime:
         memory_data = _load_memory_from_file(agent_name)
-        _memory_cache[agent_name] = (memory_data, current_mtime)
+        _memory_cache[cache_key] = (memory_data, current_mtime)
         return memory_data
 
     return cached[0]
@@ -105,6 +106,7 @@ def reload_memory_data(agent_name: str | None = None) -> dict[str, Any]:
         The reloaded memory data dictionary.
     """
     file_path = _get_memory_file_path(agent_name)
+    cache_key = str(file_path.resolve())
     memory_data = _load_memory_from_file(agent_name)
 
     try:
@@ -112,7 +114,7 @@ def reload_memory_data(agent_name: str | None = None) -> dict[str, Any]:
     except OSError:
         mtime = None
 
-    _memory_cache[agent_name] = (memory_data, mtime)
+    _memory_cache[cache_key] = (memory_data, mtime)
     return memory_data
 
 
@@ -163,6 +165,7 @@ def _load_memory_from_file(agent_name: str | None = None) -> dict[str, Any]:
         The memory data dictionary.
     """
     file_path = _get_memory_file_path(agent_name)
+    cache_key = str(file_path.resolve())
 
     if not file_path.exists():
         return _create_empty_memory()
@@ -255,7 +258,7 @@ def _save_memory_to_file(memory_data: dict[str, Any], agent_name: str | None = N
         except OSError:
             mtime = None
 
-        _memory_cache[agent_name] = (memory_data, mtime)
+        _memory_cache[cache_key] = (memory_data, mtime)
 
         logger.info("Memory saved to %s", file_path)
         return True

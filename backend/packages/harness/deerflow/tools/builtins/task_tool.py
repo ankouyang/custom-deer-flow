@@ -86,13 +86,8 @@ def task_tool(
         sandbox_state = runtime.state.get("sandbox")
         thread_data = runtime.state.get("thread_data")
         thread_id = runtime.context.get("thread_id")
-
-        # Try to get parent model from configurable
-        metadata = runtime.config.get("metadata", {})
-        parent_model = metadata.get("model_name")
-
-        # Get or generate trace_id for distributed tracing
-        trace_id = metadata.get("trace_id") or str(uuid.uuid4())[:8]
+        parent_model = runtime.context.get("model_name")
+        trace_id = runtime.context.get("trace_id") or str(uuid.uuid4())[:8]
 
     # Get available tools (excluding task tool to prevent nesting)
     # Lazy import to avoid circular dependency

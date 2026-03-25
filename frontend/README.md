@@ -125,6 +125,31 @@ src/
 - Environment validation can be skipped with `SKIP_ENV_VALIDATION=1` (useful for Docker)
 - Backend API URLs are optional; nginx proxy is used by default in development
 
+## Multi-User Auth
+
+The frontend now ships with a Prisma-backed auth layer for multi-user isolation.
+
+Required environment variables in `frontend/.env`:
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/deerflow"
+BETTER_AUTH_SECRET="replace-with-a-long-random-string"
+DEER_FLOW_PROXY_SHARED_SECRET="replace-with-another-long-random-string"
+```
+
+Before first run:
+
+```bash
+pnpm prisma:generate
+pnpm prisma:migrate
+```
+
+Important:
+
+- `DEER_FLOW_PROXY_SHARED_SECRET` must also be present in the backend process environment.
+- `User.workSpace` is used as a logical workspace key, not a raw absolute path.
+- Backend user data is isolated under `backend/.deer-flow/workspaces/<workspace>/...`
+
 ## License
 
 MIT License. See [LICENSE](../LICENSE) for details.

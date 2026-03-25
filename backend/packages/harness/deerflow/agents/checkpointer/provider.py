@@ -22,12 +22,16 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import Iterator
+from pathlib import Path
+from threading import Lock
 
 from langgraph.types import Checkpointer
 
 from deerflow.config.app_config import get_app_config
 from deerflow.config.checkpointer_config import CheckpointerConfig
-from deerflow.config.paths import resolve_path
+from deerflow.config.paths import Paths, resolve_path
+from deerflow.context import get_current_workspace
+from deerflow.config.workspace_registry import get_workspace_for_thread
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,119 @@ def _resolve_sqlite_conn_str(raw: str) -> str:
     return str(resolve_path(raw))
 
 
+def _extract_thread_id(config) -> str | None:
+    if isinstance(config, dict):
+        configurable = config.get("configurable")
+        if isinstance(configurable, dict):
+            thread_id = configurable.get("thread_id")
+            if isinstance(thread_id, str) and thread_id:
+                return thread_id
+        thread_id = config.get("thread_id")
+        if isinstance(thread_id, str) and thread_id:
+            return thread_id
+    return None
+
+
+def _get_checkpointer_workspace_key(config=None, *, thread_id: str | None = None) -> str | None:
+    workspace = get_current_workspace()
+    if workspace:
+        return workspace
+
+    resolved_thread_id = thread_id or _extract_thread_id(config)
+    if resolved_thread_id:
+        return get_workspace_for_thread(resolved_thread_id)
+    return None
+
+
+def _resolve_sqlite_conn_str_for_workspace(raw: str, workspace: str | None) -> str:
+    """Resolve sqlite storage path for the active workspace.
+
+    Relative paths are isolated per workspace. Absolute paths and SQLite special
+    connection strings are respected as-is.
+    """
+    if raw == ":memory:" or raw.startswith("file:"):
+        return raw
+
+    path = Path(raw)
+    if path.is_absolute():
+        return str(path)
+
+    paths = Paths()
+    root = paths.workspace_dir(workspace) if workspace else paths.storage_root_dir
+    return str((root / path).resolve())
+
+
+class WorkspaceAwareSqliteSaver:
+    """Route SQLite checkpoint operations to a workspace-specific DB file."""
+
+    def __init__(self, raw_conn_str: str) -> None:
+        self._raw_conn_str = raw_conn_str
+        self._savers: dict[str | None, object] = {}
+        self._contexts: dict[str | None, object] = {}
+        self._lock = Lock()
+
+    def _get_saver(self, config=None, *, thread_id: str | None = None):
+        workspace = _get_checkpointer_workspace_key(config, thread_id=thread_id)
+        with self._lock:
+            saver = self._savers.get(workspace)
+            if saver is not None:
+                return saver
+
+            from langgraph.checkpoint.sqlite import SqliteSaver
+
+            conn_str = _resolve_sqlite_conn_str_for_workspace(
+                self._raw_conn_str,
+                workspace,
+            )
+            ctx = SqliteSaver.from_conn_string(conn_str)
+            saver = ctx.__enter__()
+            saver.setup()
+            self._contexts[workspace] = ctx
+            self._savers[workspace] = saver
+            logger.info(
+                "Checkpointer: using workspace SqliteSaver (%s) for workspace=%s",
+                conn_str,
+                workspace or "__global__",
+            )
+            return saver
+
+    def close(self) -> None:
+        with self._lock:
+            contexts = list(self._contexts.values())
+            self._contexts.clear()
+            self._savers.clear()
+
+        for ctx in contexts:
+            ctx.__exit__(None, None, None)
+
+    def get(self, config):
+        return self._get_saver(config).get(config)
+
+    def get_tuple(self, config):
+        return self._get_saver(config).get_tuple(config)
+
+    def put(self, config, checkpoint, metadata, new_versions):
+        return self._get_saver(config).put(config, checkpoint, metadata, new_versions)
+
+    def put_writes(self, config, writes, task_id, task_path=""):
+        return self._get_saver(config).put_writes(config, writes, task_id, task_path)
+
+    def list(self, config, *, filter=None, before=None, limit=None):
+        return self._get_saver(config).list(
+            config,
+            filter=filter,
+            before=before,
+            limit=limit,
+        )
+
+    def delete_thread(self, thread_id: str):
+        return self._get_saver(thread_id=thread_id).delete_thread(thread_id)
+
+    def setup(self) -> None:
+        # Lazy per-workspace initialization; nothing to do eagerly.
+        return None
+
+
 @contextlib.contextmanager
 def _sync_checkpointer_cm(config: CheckpointerConfig) -> Iterator[Checkpointer]:
     """Context manager that creates and tears down a sync checkpointer.
@@ -73,16 +190,11 @@ def _sync_checkpointer_cm(config: CheckpointerConfig) -> Iterator[Checkpointer]:
         return
 
     if config.type == "sqlite":
+        saver = WorkspaceAwareSqliteSaver(config.connection_string or "store.db")
         try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
-        except ImportError as exc:
-            raise ImportError(SQLITE_INSTALL) from exc
-
-        conn_str = _resolve_sqlite_conn_str(config.connection_string or "store.db")
-        with SqliteSaver.from_conn_string(conn_str) as saver:
-            saver.setup()
-            logger.info("Checkpointer: using SqliteSaver (%s)", conn_str)
             yield saver
+        finally:
+            saver.close()
         return
 
     if config.type == "postgres":

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 export default function ChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
+  const router = useRouter();
 
   const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
   useSpecificChatMode();
@@ -70,6 +72,16 @@ export default function ChatPage() {
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+
+  useEffect(() => {
+    if (
+      !isNewThread &&
+      thread.error instanceof Error &&
+      /thread .*not found|404/i.test(thread.error.message)
+    ) {
+      router.replace("/workspace/chats/new");
+    }
+  }, [isNewThread, router, thread.error]);
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>

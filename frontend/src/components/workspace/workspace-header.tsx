@@ -1,8 +1,9 @@
 "use client";
 
-import { MessageSquarePlus } from "lucide-react";
+import { LogOut, MessageSquarePlus } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import {
   SidebarMenu,
@@ -19,6 +20,18 @@ export function WorkspaceHeader({ className }: { className?: string }) {
   const { t } = useI18n();
   const { state } = useSidebar();
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    const response = await fetch("/api/logout", { method: "POST" });
+    if (!response.ok) {
+      toast.error("Failed to sign out.");
+      return;
+    }
+    router.push("/login");
+    router.refresh();
+  }
+
   return (
     <>
       <div
@@ -59,6 +72,12 @@ export function WorkspaceHeader({ className }: { className?: string }) {
               <MessageSquarePlus size={16} />
               <span>{t.sidebar.newChat}</span>
             </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={handleLogout}>
+            <LogOut size={16} />
+            <span>Sign out</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

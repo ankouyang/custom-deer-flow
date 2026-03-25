@@ -16,7 +16,11 @@ import { useUpdateSubtask } from "../tasks/context";
 import type { UploadedFileInfo } from "../uploads";
 import { uploadFiles } from "../uploads";
 
-import type { AgentThread, AgentThreadState } from "./types";
+import type {
+  AgentThread,
+  AgentThreadState,
+  ThreadStreamView,
+} from "./types";
 
 export type ToolEndEvent = {
   name: string;
@@ -115,7 +119,6 @@ export function useThreadStream({
     assistantId: "lead_agent",
     threadId: onStreamThreadId,
     reconnectOnMount: true,
-    fetchStateHistory: { limit: 1 },
     onCreated(meta) {
       handleStreamStart(meta.thread_id);
       setOnStreamThreadId(meta.thread_id);
@@ -365,7 +368,14 @@ export function useThreadStream({
             streamSubgraphs: true,
             streamResumable: true,
             config: {
-              recursion_limit: 1000,
+              recursion_limit:
+                context.mode === "ultra"
+                  ? 150
+                  : context.mode === "pro"
+                    ? 100
+                    : context.mode === "thinking"
+                      ? 75
+                      : 50,
             },
             context: {
               ...extraContext,
@@ -399,13 +409,19 @@ export function useThreadStream({
   );
 
   // Merge thread with optimistic messages for display
-  const mergedThread =
+  const mergedMessages =
     optimisticMessages.length > 0
-      ? ({
-          ...thread,
-          messages: [...thread.messages, ...optimisticMessages],
-        } as typeof thread)
-      : thread;
+      ? [...thread.messages, ...optimisticMessages]
+      : thread.messages;
+
+  const mergedThread: ThreadStreamView = {
+    messages: mergedMessages,
+    values: (thread.values ?? {}) as AgentThreadState,
+    error: thread.error,
+    isLoading: thread.isLoading,
+    isThreadLoading: thread.isThreadLoading,
+    stop: () => thread.stop(),
+  };
 
   return [mergedThread, sendMessage, isUploading] as const;
 }

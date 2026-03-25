@@ -3,10 +3,14 @@ import re
 import shutil
 from pathlib import Path
 
+from deerflow.context import get_current_workspace
+from deerflow.config.workspace_registry import get_workspace_for_thread
+
 # Virtual path prefix seen by agents inside the sandbox
 VIRTUAL_PATH_PREFIX = "/mnt/user-data"
 
 _SAFE_THREAD_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+_SAFE_WORKSPACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{0,127}$")
 
 
 class Paths:
@@ -55,8 +59,8 @@ class Paths:
         return self.base_dir
 
     @property
-    def base_dir(self) -> Path:
-        """Root directory for all application data."""
+    def storage_root_dir(self) -> Path:
+        """Root directory for shared DeerFlow storage before workspace scoping."""
         if self._base_dir is not None:
             return self._base_dir
 
@@ -68,6 +72,29 @@ class Paths:
             return cwd / ".deer-flow"
 
         return Path.home() / ".deer-flow"
+
+    @property
+    def base_dir(self) -> Path:
+        """Root directory for all application data."""
+        workspace = get_current_workspace()
+        if workspace:
+            return self.workspace_dir(workspace)
+        return self.storage_root_dir
+
+    def workspace_dir(self, workspace: str) -> Path:
+        """Root directory for a specific user workspace."""
+        normalized = self.normalize_workspace(workspace)
+        return self.storage_root_dir / "workspaces" / normalized
+
+    @staticmethod
+    def normalize_workspace(workspace: str) -> str:
+        value = workspace.strip()
+        if not _SAFE_WORKSPACE_RE.match(value):
+            raise ValueError(
+                "Invalid workspace: only letters, numbers, underscores, and hyphens are allowed, "
+                "and it must start with an alphanumeric character."
+            )
+        return value
 
     @property
     def memory_file(self) -> Path:
@@ -105,7 +132,9 @@ class Paths:
         """
         if not _SAFE_THREAD_ID_RE.match(thread_id):
             raise ValueError(f"Invalid thread_id {thread_id!r}: only alphanumeric characters, hyphens, and underscores are allowed.")
-        return self.base_dir / "threads" / thread_id
+        workspace = get_current_workspace() or get_workspace_for_thread(thread_id)
+        root = self.workspace_dir(workspace) if workspace else self.base_dir
+        return root / "threads" / thread_id
 
     def sandbox_work_dir(self, thread_id: str) -> Path:
         """
