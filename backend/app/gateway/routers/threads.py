@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.services.authz_service import get_authz_service
 from deerflow.config.paths import Paths, get_paths
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ class ThreadDeleteResponse(BaseModel):
 
 def _delete_thread_data(thread_id: str, paths: Paths | None = None) -> ThreadDeleteResponse:
     """Delete local persisted filesystem data for a thread."""
+    get_authz_service().assert_thread_access(thread_id)
     path_manager = paths or get_paths()
     try:
         path_manager.delete_thread_dir(thread_id)

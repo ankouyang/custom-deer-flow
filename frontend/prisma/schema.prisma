@@ -8,17 +8,144 @@ datasource db {
 }
 
 model User {
-  id         String          @id @default(cuid())
-  email      String          @unique
-  name       String?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  workSpace  String
-  credential AuthCredential?
+  id                 String            @id @default(cuid())
+  email              String            @unique
+  name               String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  workSpace          String
+  defaultWorkspaceId String?
+  credential         AuthCredential?
+  ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
+  memberships        WorkspaceMember[]
+  createdAgents      Agent[]           @relation("AgentCreator")
+  defaultWorkspace   Workspace?        @relation("UserDefaultWorkspace", fields: [defaultWorkspaceId], references: [id], onDelete: SetNull)
 }
 
 model AuthCredential {
   userId       String @id
   passwordHash String
   user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Workspace {
+  id              String             @id @default(cuid())
+  ownerUserId     String
+  name            String
+  slug            String             @unique
+  status          WorkspaceStatus    @default(ACTIVE)
+  defaultAgentId  String?            @unique
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  owner           User               @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  defaultAgent    Agent?             @relation("WorkspaceDefaultAgent", fields: [defaultAgentId], references: [id], onDelete: SetNull)
+  usersWithDefault User[]            @relation("UserDefaultWorkspace")
+  members         WorkspaceMember[]
+  agents          Agent[]            @relation("WorkspaceAgents")
+  memory          WorkspaceMemory?
+}
+
+model WorkspaceMember {
+  id          String                @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceMemberRole   @default(OWNER)
+  status      WorkspaceMemberStatus @default(ACTIVE)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Agent {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  name              String
+  slug              String
+  type              AgentType
+  source            AgentSource
+  description       String?
+  isDefault         Boolean       @default(false)
+  status            AgentStatus   @default(ACTIVE)
+  createdBy         String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  workspace         Workspace     @relation("WorkspaceAgents", fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceDefaultFor Workspace?  @relation("WorkspaceDefaultAgent")
+  creator           User          @relation("AgentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  config            AgentConfig?
+  memory            AgentMemory?
+
+  @@unique([workspaceId, slug])
+}
+
+model AgentConfig {
+  agentId            String   @id
+  modelName          String?
+  systemPrompt       String?
+  soulPrompt         String?
+  temperature        Float?
+  maxTokens          Int?
+  sandboxPolicyJson  Json     @default("{}")
+  memoryPolicyJson   Json     @default("{}")
+  toolPolicyJson     Json     @default("{}")
+  skillPolicyJson    Json     @default("{}")
+  extraConfigJson    Json     @default("{}")
+  updatedAt          DateTime @updatedAt
+  agent              Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceMemory {
+  workspaceId          String   @id
+  memorySchemaVersion  String
+  memoryJson           Json
+  updatedAt            DateTime @updatedAt
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AgentMemory {
+  agentId              String   @id
+  memorySchemaVersion  String
+  memoryJson           Json
+  updatedAt            DateTime @updatedAt
+  agent                Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+}
+
+enum WorkspaceMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum WorkspaceMemberStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+  REMOVED
+}
+
+enum AgentType {
+  PLATFORM
+  CUSTOM
+}
+
+enum AgentSource {
+  SYSTEM_BUILTIN
+  USER_CREATED
+  CLONED
+}
+
+enum AgentStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
 }

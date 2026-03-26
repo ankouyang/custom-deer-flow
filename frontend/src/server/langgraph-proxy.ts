@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getServerSession } from "@/server/auth/session";
 import { buildProxyRequest, createProxyResponse } from "@/server/proxy";
-import { registerThreadWorkspace } from "@/server/workspace-storage";
+import { registerThreadScope, registerThreadWorkspace } from "@/server/workspace-storage";
 
 type ThreadSearchPayload = Array<{
   metadata?: Record<string, unknown>;
@@ -29,6 +29,8 @@ async function filterThreadSearch(
   upstream: Response,
   sessionUserId: string,
   sessionWorkspace: string,
+  agentName?: string | null,
+  agentId?: string | null,
 ): Promise<Response> {
   if (!upstream.ok) {
     return createProxyResponse(upstream);
@@ -48,7 +50,26 @@ async function filterThreadSearch(
   const filtered = payload.filter((thread) => {
     const metadataUserId = thread.metadata?.user_id;
     if (typeof metadataUserId === "string" && metadataUserId.length > 0) {
-      return metadataUserId === sessionUserId;
+      if (metadataUserId !== sessionUserId) {
+        return false;
+      }
+      const metadataAgentId = thread.metadata?.agent_id;
+      if (
+        typeof agentId === "string" &&
+        agentId.length > 0 &&
+        metadataAgentId !== agentId
+      ) {
+        return false;
+      }
+      const metadataAgentName = thread.metadata?.agent_name;
+      if (
+        typeof agentName === "string" &&
+        agentName.length > 0 &&
+        metadataAgentName !== agentName
+      ) {
+        return false;
+      }
+      return true;
     }
 
     const threadData = thread.values?.thread_data;
@@ -57,9 +78,34 @@ async function filterThreadSearch(
       threadData?.uploads_path,
       threadData?.outputs_path,
     ];
-    return candidatePaths.some(
+    const inWorkspace = candidatePaths.some(
       (value) => typeof value === "string" && value.includes(workspaceMarker),
     );
+    if (!inWorkspace) {
+      return false;
+    }
+
+    const metadataAgentId = thread.metadata?.agent_id;
+    if (
+      typeof agentId === "string" &&
+      agentId.length > 0 &&
+      typeof metadataAgentId === "string" &&
+      metadataAgentId !== agentId
+    ) {
+      return false;
+    }
+
+    const metadataAgentName = thread.metadata?.agent_name;
+    if (
+      typeof agentName === "string" &&
+      agentName.length > 0 &&
+      typeof metadataAgentName === "string" &&
+      metadataAgentName !== agentName
+    ) {
+      return false;
+    }
+
+    return true;
   });
 
   return new Response(JSON.stringify(filtered), {
@@ -86,13 +132,28 @@ export async function handleLanggraphProxy(
 
   const params = await context.params;
   const path = `/${(params.path ?? []).join("/")}`;
-  const { url, init } = await buildProxyRequest(
+  const { url, init, resolvedAgentId, resolvedAgentName } = await buildProxyRequest(
     request,
     session,
     path,
     "langgraph",
   );
   const upstream = await fetch(url, init);
+
+  const threadRunMatch = path.match(/^\/threads\/([^/]+)\/runs(?:\/stream)?$/);
+  const scopedThreadId = threadRunMatch?.[1];
+  if (
+    request.method === "POST" &&
+    typeof scopedThreadId === "string" &&
+    scopedThreadId.length > 0
+  ) {
+    await registerThreadScope({
+      workspace: session.workspace,
+      threadId: scopedThreadId,
+      agentId: resolvedAgentId ?? null,
+      agentName: resolvedAgentName ?? null,
+    });
+  }
 
   if (
     request.method === "POST" &&
@@ -118,7 +179,13 @@ export async function handleLanggraphProxy(
     path === "/threads/search" &&
     upstream.headers.get("content-type")?.includes("application/json")
   ) {
-    return filterThreadSearch(upstream, session.userId, session.workspace);
+    return filterThreadSearch(
+      upstream,
+      session.userId,
+      session.workspace,
+      resolvedAgentName,
+      resolvedAgentId,
+    );
   }
 
   return createProxyResponse(upstream);

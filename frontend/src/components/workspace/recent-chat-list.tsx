@@ -61,8 +61,12 @@ export function RecentChatList() {
   const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
-  const { thread_id: threadIdFromPath } = useParams<{ thread_id: string }>();
-  const { data: threads = [] } = useThreads();
+  const {
+    thread_id: threadIdFromPath,
+    agent_name: agentNameFromPath,
+  } = useParams<{ thread_id: string; agent_name?: string }>();
+  const agentName = agentNameFromPath ?? null;
+  const { data: threads = [] } = useThreads(undefined, { agentName });
   const { mutate: deleteThread } = useDeleteThread();
   const { mutate: renameThread } = useRenameThread();
 
@@ -84,10 +88,10 @@ export function RecentChatList() {
             nextThreadId = threads[threadIndex - 1]!.thread_id;
           }
         }
-        void router.push(`/workspace/chats/${nextThreadId}`);
+        void router.push(pathOfThread(nextThreadId, { agentName }));
       }
     },
-    [deleteThread, router, threadIdFromPath, threads],
+    [agentName, deleteThread, router, threadIdFromPath, threads],
   );
 
   const handleRenameClick = useCallback(
@@ -117,7 +121,7 @@ export function RecentChatList() {
         window.location.hostname === "127.0.0.1";
       // On localhost: use Vercel URL; On production: use current origin
       const baseUrl = isLocalhost ? VERCEL_URL : window.location.origin;
-      const shareUrl = `${baseUrl}/workspace/chats/${threadId}`;
+      const shareUrl = `${baseUrl}${pathOfThread(threadId, { agentName })}`;
       try {
         await navigator.clipboard.writeText(shareUrl);
         toast.success(t.clipboard.linkCopied);
@@ -160,15 +164,18 @@ export function RecentChatList() {
     <>
       <SidebarGroup>
         <SidebarGroupLabel>
-          {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true"
-            ? t.sidebar.recentChats
-            : t.sidebar.demoChats}
+          {agentName
+            ? `Agent Threads`
+            : env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true"
+              ? t.sidebar.recentChats
+              : t.sidebar.demoChats}
         </SidebarGroupLabel>
         <SidebarGroupContent className="group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">
           <SidebarMenu>
             <div className="flex w-full flex-col gap-1">
               {threads.map((thread) => {
-                const isActive = pathOfThread(thread.thread_id) === pathname;
+                const isActive =
+                  pathOfThread(thread.thread_id, { agentName }) === pathname;
                 return (
                   <SidebarMenuItem
                     key={thread.thread_id}
@@ -178,7 +185,7 @@ export function RecentChatList() {
                       <div>
                         <Link
                           className="text-muted-foreground block w-full whitespace-nowrap group-hover/side-menu-item:overflow-hidden"
-                          href={pathOfThread(thread.thread_id)}
+                          href={pathOfThread(thread.thread_id, { agentName })}
                         >
                           {titleOfThread(thread)}
                         </Link>

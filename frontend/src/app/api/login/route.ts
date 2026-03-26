@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { ensureWorkspaceBootstrapForUser } from "@/server/auth/bootstrap";
 import { db } from "@/server/db";
 import { verifyPassword } from "@/server/auth/password";
 import { applySessionCookie } from "@/server/auth/session";
@@ -36,12 +37,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const workspace = await ensureWorkspaceBootstrapForUser(user);
+
+  const workspaceSlug = workspace?.slug ?? user.workSpace;
+
   const response = NextResponse.json({
     user: {
       id: user.id,
       email: user.email,
       name: user.name,
-      workSpace: user.workSpace,
+      workSpace: workspaceSlug,
+      workspaceId: workspace?.id ?? null,
+      defaultAgentId: workspace?.defaultAgent?.id ?? null,
     },
   });
 
@@ -49,7 +56,9 @@ export async function POST(request: Request) {
     userId: user.id,
     email: user.email,
     name: user.name,
-    workspace: user.workSpace,
+    workspace: workspaceSlug,
+    workspaceId: workspace?.id ?? null,
+    defaultAgentId: workspace?.defaultAgent?.id ?? null,
   });
 
   return response;

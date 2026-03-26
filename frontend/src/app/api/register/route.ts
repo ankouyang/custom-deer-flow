@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { db } from "@/server/db";
+import { bootstrapWorkspaceForUser } from "@/server/auth/bootstrap";
 import { hashPassword } from "@/server/auth/password";
 import { applySessionCookie } from "@/server/auth/session";
 import { generateWorkspaceFromEmail } from "@/server/auth/workspace";
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await db.user.create({
+    const createdUser = await db.user.create({
       data: {
         email,
         name,
@@ -57,9 +58,19 @@ export async function POST(request: Request) {
       },
       include: { credential: true },
     });
+
+    const { user, workspace, defaultAgent } = await bootstrapWorkspaceForUser({
+      userId: createdUser.id,
+      email: createdUser.email,
+      name: createdUser.name,
+      workspaceSlug: createdUser.workSpace,
+    });
+
     console.info(`[register] ${traceId} user created`, {
       userId: user.id,
-      workspace: user.workSpace,
+      workspace: workspace.slug,
+      workspaceId: workspace.id,
+      defaultAgentId: defaultAgent.id,
     });
 
     const response = NextResponse.json({
@@ -67,7 +78,9 @@ export async function POST(request: Request) {
         id: user.id,
         email: user.email,
         name: user.name,
-        workSpace: user.workSpace,
+        workSpace: workspace.slug,
+        workspaceId: workspace.id,
+        defaultAgentId: defaultAgent.id,
       },
     });
 
@@ -75,7 +88,9 @@ export async function POST(request: Request) {
       userId: user.id,
       email: user.email,
       name: user.name,
-      workspace: user.workSpace,
+      workspace: workspace.slug,
+      workspaceId: workspace.id,
+      defaultAgentId: defaultAgent.id,
     });
     console.info(`[register] ${traceId} cookie applied`);
 

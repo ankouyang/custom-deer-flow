@@ -17,7 +17,7 @@ import { formatTimeAgo } from "@/core/utils/datetime";
 
 export default function ChatsPage() {
   const { t } = useI18n();
-  const { data: threads } = useThreads();
+  const { data: threads } = useThreads(undefined, { agentName: null });
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function ChatsPage() {
                 {filteredThreads?.map((thread) => (
                   <Link
                     key={thread.thread_id}
-                    href={pathOfThread(thread.thread_id)}
+                    href={pathOfThread(thread.thread_id, { agentName: null })}
                   >
                     <div className="flex flex-col gap-2 border-b p-4">
                       <div>

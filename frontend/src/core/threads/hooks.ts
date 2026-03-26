@@ -433,19 +433,30 @@ export function useThreads(
     sortOrder: "desc",
     select: ["thread_id", "updated_at", "values"],
   },
+  options?: { agentName?: string | null },
 ) {
   const apiClient = getAPIClient();
   return useQuery<AgentThread[]>({
-    queryKey: ["threads", "search", params],
+    queryKey: ["threads", "search", params, options?.agentName ?? null],
     queryFn: async () => {
       const maxResults = params.limit;
       const initialOffset = params.offset ?? 0;
       const DEFAULT_PAGE_SIZE = 50;
+      const scopedParams = {
+        ...params,
+        metadata: {
+          ...((params as Record<string, unknown>).metadata as
+            | Record<string, unknown>
+            | undefined),
+          ...(options?.agentName ? { agent_name: options.agentName } : {}),
+        },
+      } as Parameters<ThreadsClient["search"]>[0];
 
       // Preserve prior semantics: if a non-positive limit is explicitly provided,
       // delegate to a single search call with the original parameters.
       if (maxResults !== undefined && maxResults <= 0) {
-        const response = await apiClient.threads.search<AgentThreadState>(params);
+        const response =
+          await apiClient.threads.search<AgentThreadState>(scopedParams);
         return response as AgentThread[];
       }
 
@@ -472,7 +483,7 @@ export function useThreads(
         }
 
         const response = (await apiClient.threads.search<AgentThreadState>({
-          ...params,
+          ...scopedParams,
           limit: currentLimit,
           offset,
         })) as AgentThread[];

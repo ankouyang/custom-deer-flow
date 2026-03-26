@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.services.authz_service import get_authz_service
 from deerflow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from deerflow.sandbox.sandbox_provider import get_sandbox_provider
 from deerflow.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
@@ -32,6 +33,7 @@ def get_uploads_dir(thread_id: str) -> Path:
     Returns:
         Path to the uploads directory.
     """
+    get_authz_service().assert_thread_access(thread_id)
     base_dir = get_paths().sandbox_uploads_dir(thread_id)
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir

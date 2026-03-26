@@ -15,6 +15,8 @@ export async function GET() {
       email: session.email,
       name: session.name,
       workSpace: session.workspace,
+      workspaceId: session.workspaceId ?? null,
+      defaultAgentId: session.defaultAgentId ?? null,
     },
   });
 }

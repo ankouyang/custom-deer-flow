@@ -11,6 +11,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "prisma:generate": "prisma generate",
+    "prisma:backfill:workspace-agent": "node scripts/backfill-workspace-agent-data.mjs",
     "prisma:migrate": "prisma migrate dev",
     "preview": "next build && next start",
     "start": "next start",

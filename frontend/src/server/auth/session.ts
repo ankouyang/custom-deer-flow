@@ -12,6 +12,8 @@ export type AppSession = {
   email: string;
   name: string | null;
   workspace: string;
+  workspaceId?: string | null;
+  defaultAgentId?: string | null;
 };
 
 type SessionPayload = AppSession & {
@@ -70,6 +72,8 @@ export function parseSessionValue(value?: string | null): AppSession | null {
       email: parsed.email,
       name: parsed.name ?? null,
       workspace: parsed.workspace,
+      workspaceId: parsed.workspaceId ?? null,
+      defaultAgentId: parsed.defaultAgentId ?? null,
     };
   } catch {
     return null;
