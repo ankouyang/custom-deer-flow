@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorSmartphoneIcon, MoonIcon, SunIcon } from "lucide-react";
+import { MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useMemo, type ComponentType, type SVGProps } from "react";
 
@@ -25,17 +25,13 @@ const languageOptions: { value: Locale; label: string }[] = [
 
 export function AppearanceSettingsPage() {
   const { t, locale, changeLocale } = useI18n();
-  const { theme, setTheme, systemTheme } = useTheme();
-  const currentTheme = (theme ?? "system") as "system" | "light" | "dark";
+  const { theme, setTheme } = useTheme();
+  const currentTheme = (theme === "dark" ? "dark" : "light") as
+    | "light"
+    | "dark";
 
   const themeOptions = useMemo(
     () => [
-      {
-        id: "system",
-        label: t.settings.appearance.system,
-        description: t.settings.appearance.systemDescription,
-        icon: MonitorSmartphoneIcon,
-      },
       {
         id: "light",
         label: t.settings.appearance.light,
@@ -54,8 +50,6 @@ export function AppearanceSettingsPage() {
       t.settings.appearance.darkDescription,
       t.settings.appearance.light,
       t.settings.appearance.lightDescription,
-      t.settings.appearance.system,
-      t.settings.appearance.systemDescription,
     ],
   );
 
@@ -65,7 +59,7 @@ export function AppearanceSettingsPage() {
         title={t.settings.appearance.themeTitle}
         description={t.settings.appearance.themeDescription}
       >
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-2">
           {themeOptions.map((option) => (
             <ThemePreviewCard
               key={option.id}
@@ -73,8 +67,7 @@ export function AppearanceSettingsPage() {
               label={option.label}
               description={option.description}
               active={currentTheme === option.id}
-              mode={option.id as "system" | "light" | "dark"}
-              systemTheme={systemTheme}
+              mode={option.id as "light" | "dark"}
               onSelect={(value) => setTheme(value)}
             />
           ))}
@@ -117,19 +110,19 @@ function ThemePreviewCard({
   description,
   active,
   mode,
-  systemTheme,
   onSelect,
 }: {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   label: string;
   description: string;
   active: boolean;
-  mode: "system" | "light" | "dark";
-  systemTheme?: string;
-  onSelect: (mode: "system" | "light" | "dark") => void;
+  mode: "light" | "dark";
+  onSelect: (mode: "light" | "dark") => void;
 }) {
-  const previewMode =
-    mode === "system" ? (systemTheme === "dark" ? "dark" : "light") : mode;
+  // 已注释掉跟随系统主题判断逻辑，仅保留显式 light/dark 模式
+  // const previewMode =
+  //   mode === "system" ? (systemTheme === "dark" ? "dark" : "light") : mode;
+  const previewMode = mode;
   return (
     <button
       type="button"
