@@ -144,6 +144,29 @@ pnpm prisma:generate
 pnpm prisma:migrate
 ```
 
+After any Prisma schema change, run:
+
+```bash
+pnpm prisma:generate
+```
+
+If you switch branches and the Prisma schema or generated types differ, restart the frontend after regenerating:
+
+```bash
+pnpm prisma:generate
+pnpm dev
+```
+
+You can also enable the repo-managed Git hook from the repository root so branch switches regenerate Prisma automatically:
+
+```bash
+make install-hooks
+```
+
+That hook setup also covers `git merge` and `git pull`, so Prisma client is regenerated when merged frontend Prisma-related files change.
+
+It also covers `git rebase` through `post-rewrite`, so the common history-rewrite path is included too.
+
 Important:
 
 - `DEER_FLOW_PROXY_SHARED_SECRET` must also be present in the backend process environment.

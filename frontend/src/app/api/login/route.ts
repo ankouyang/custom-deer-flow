@@ -7,50 +7,75 @@ import { applySessionCookie } from "@/server/auth/session";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as
-    | { email?: string; password?: string }
-    | null;
+  const traceId = `login-${Date.now()}`;
+  try {
+    console.info(`[login] ${traceId} start`);
 
-  const email = body?.email?.trim().toLowerCase();
-  const password = body?.password?.trim();
+    const body = (await request.json().catch(() => null)) as
+      | { email?: string; password?: string }
+      | null;
+    console.info(`[login] ${traceId} body parsed`);
 
-  if (!email || !password) {
-    return NextResponse.json(
-      { error: "Email and password are required." },
-      { status: 400 },
-    );
-  }
+    const email = body?.email?.trim().toLowerCase();
+    const password = body?.password?.trim();
 
-  const user = await db.user.findUnique({
-    where: { email },
-    include: { credential: true },
-  });
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required." },
+        { status: 400 },
+      );
+    }
 
-  if (
-    !user?.credential ||
-    !verifyPassword(password, user.credential.passwordHash)
-  ) {
-    return NextResponse.json(
-      { error: "Invalid email or password." },
-      { status: 401 },
-    );
-  }
+    const user = await db.user.findUnique({
+      where: { email },
+      include: { credential: true },
+    });
+    console.info(`[login] ${traceId} user queried`, {
+      found: !!user,
+      hasCredential: !!user?.credential,
+    });
 
-  const response = NextResponse.json({
-    user: {
-      id: user.id,
+    if (
+      !user?.credential ||
+      !verifyPassword(password, user.credential.passwordHash)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid email or password." },
+        { status: 401 },
+      );
+    }
+
+    const response = NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        workSpace: user.workSpace,
+      },
+    });
+
+    applySessionCookie(response, {
+      userId: user.id,
       email: user.email,
       name: user.name,
-      workSpace: user.workSpace,
-    },
-  });
+      workspace: user.workSpace,
+    });
+    console.info(`[login] ${traceId} cookie applied`);
 
-  applySessionCookie(response, {
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    workspace: user.workSpace,
-  });
-
-  return response;
+    return response;
+  } catch (error) {
+    console.error(`[login] ${traceId} failed`, error);
+    return NextResponse.json(
+      {
+        error: "Login failed.",
+        detail:
+          process.env.NODE_ENV === "development"
+            ? error instanceof Error
+              ? error.message
+              : String(error)
+            : undefined,
+      },
+      { status: 500 },
+    );
+  }
 }

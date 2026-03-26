@@ -5,15 +5,16 @@
   "type": "module",
   "scripts": {
     "demo:save": "node scripts/save-demo.js",
-    "build": "next build",
+    "build": "pnpm prisma:generate && next build",
     "check": "next lint && tsc --noEmit",
-    "dev": "next dev --turbo",
+    "dev": "pnpm prisma:generate && next dev --turbo",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "postinstall": "pnpm prisma:generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "preview": "next build && next start",
-    "start": "next start",
+    "preview": "pnpm prisma:generate && next build && next start",
+    "start": "pnpm prisma:generate && next start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

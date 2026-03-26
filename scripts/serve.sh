@@ -149,7 +149,7 @@ echo "Starting Gateway API..."
 echo "✓ Gateway API started on localhost:8001"
 
 echo "Starting Frontend..."
-(cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1) &
+(cd frontend && pnpm exec prisma generate && $FRONTEND_CMD > ../logs/frontend.log 2>&1) &
 ./scripts/wait-for-port.sh 3000 120 "Frontend" || {
     echo "  See logs/frontend.log for details"
     tail -20 logs/frontend.log

@@ -9,6 +9,9 @@ cd "$REPO_ROOT/frontend"
 
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 
+echo "Generating Prisma client..."
+pnpm exec prisma generate
+
 kill_matching_processes "next dev"
 kill_matching_processes "next start"
 kill_matching_processes "next-server"

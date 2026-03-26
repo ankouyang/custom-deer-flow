@@ -99,7 +99,7 @@ nohup sh -c 'cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --hos
 echo "✓ Gateway API started on localhost:8001"
 
 echo "Starting Frontend..."
-nohup sh -c 'cd frontend && pnpm run dev > ../logs/frontend.log 2>&1' &
+nohup sh -c 'cd frontend && pnpm exec prisma generate && pnpm run dev > ../logs/frontend.log 2>&1' &
 ./scripts/wait-for-port.sh 3000 120 "Frontend" || {
     echo "✗ Frontend failed to start. Last log output:"
     tail -60 logs/frontend.log
