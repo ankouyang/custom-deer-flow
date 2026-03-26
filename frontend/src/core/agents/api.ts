@@ -19,6 +19,26 @@ type WorkspaceAgentResponse = {
   } | null;
 };
 
+export type AgentSkillBinding = {
+  id: string;
+  skillName: string;
+  skillScope: string;
+  enabled: boolean;
+  configJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentToolBinding = {
+  id: string;
+  toolName: string;
+  toolGroup: string;
+  enabled: boolean;
+  policyJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function mapWorkspaceAgent(agent: WorkspaceAgentResponse): Agent {
   return {
     id: agent.id,
@@ -129,4 +149,88 @@ export async function checkAgentName(
     );
   }
   return res.json() as Promise<{ available: boolean; name: string }>;
+}
+
+export async function getAgentSkills(
+  name: string,
+): Promise<{ managed: boolean; skills: AgentSkillBinding[] }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workspaces/current/agents/${encodeURIComponent(name)}?resource=skills`,
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+    };
+    throw new Error(
+      err.detail ?? err.error ?? `Failed to load agent skills: ${res.statusText}`,
+    );
+  }
+  return res.json() as Promise<{ managed: boolean; skills: AgentSkillBinding[] }>;
+}
+
+export async function updateAgentSkills(
+  name: string,
+  skills: string[],
+): Promise<{ managed: boolean; skills: AgentSkillBinding[] }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workspaces/current/agents/${encodeURIComponent(name)}?resource=skills`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skills }),
+    },
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+    };
+    throw new Error(
+      err.detail ?? err.error ?? `Failed to update agent skills: ${res.statusText}`,
+    );
+  }
+  return res.json() as Promise<{ managed: boolean; skills: AgentSkillBinding[] }>;
+}
+
+export async function getAgentTools(
+  name: string,
+): Promise<{ managed: boolean; tools: AgentToolBinding[] }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workspaces/current/agents/${encodeURIComponent(name)}?resource=tools`,
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+    };
+    throw new Error(
+      err.detail ?? err.error ?? `Failed to load agent tools: ${res.statusText}`,
+    );
+  }
+  return res.json() as Promise<{ managed: boolean; tools: AgentToolBinding[] }>;
+}
+
+export async function updateAgentTools(
+  name: string,
+  toolGroups: string[],
+): Promise<{ managed: boolean; tools: AgentToolBinding[] }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workspaces/current/agents/${encodeURIComponent(name)}?resource=tools`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool_groups: toolGroups }),
+    },
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+    };
+    throw new Error(
+      err.detail ?? err.error ?? `Failed to update agent tools: ${res.statusText}`,
+    );
+  }
+  return res.json() as Promise<{ managed: boolean; tools: AgentToolBinding[] }>;
 }

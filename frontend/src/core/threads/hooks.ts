@@ -21,6 +21,7 @@ import type {
   AgentThreadState,
   ThreadStreamView,
 } from "./types";
+import { getPersistedThread } from "./api";
 
 export type ToolEndEvent = {
   name: string;
@@ -424,6 +425,16 @@ export function useThreadStream({
   };
 
   return [mergedThread, sendMessage, isUploading] as const;
+}
+
+export function usePersistedThread(threadId: string | null | undefined) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["threads", "persisted", threadId],
+    queryFn: () => getPersistedThread(threadId!),
+    enabled: !!threadId,
+  });
+
+  return { thread: data ?? null, isLoading, error };
 }
 
 export function useThreads(

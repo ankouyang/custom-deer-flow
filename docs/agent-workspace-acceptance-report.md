@@ -266,6 +266,21 @@
 
 - 将关键验收链路收敛到稳定 query route
 
+当前推荐稳定接口形态：
+
+- `GET /api/workspaces/current/threads?thread_id=<id>`
+- `GET /api/workspaces/current/agents/<agent>?resource=skills`
+- `PUT /api/workspaces/current/agents/<agent>?resource=skills`
+- `GET /api/workspaces/current/agents/<agent>?resource=tools`
+- `PUT /api/workspaces/current/agents/<agent>?resource=tools`
+
+当前推荐前端调用入口：
+
+- [agents api](/Users/ankouyang/project/deer-flow/frontend/src/core/agents/api.ts)
+- [agents hooks](/Users/ankouyang/project/deer-flow/frontend/src/core/agents/hooks.ts)
+- [threads api](/Users/ankouyang/project/deer-flow/frontend/src/core/threads/api.ts)
+- [threads hooks](/Users/ankouyang/project/deer-flow/frontend/src/core/threads/hooks.ts)
+
 ### 5.2 运行后端服务依赖本地环境
 
 表现：
@@ -314,4 +329,3 @@
 2. 为 `skills/tools/thread detail` 增加正式前端 API 封装
 3. 补一轮针对 `skills/tools/memory/thread` 的前端集成测试
 4. 在非 dev 模式下再跑一轮完整回归
-

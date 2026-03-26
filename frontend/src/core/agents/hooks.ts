@@ -4,7 +4,11 @@ import {
   createAgent,
   deleteAgent,
   getAgent,
+  getAgentSkills,
+  getAgentTools,
   listAgents,
+  updateAgentSkills,
+  updateAgentTools,
   updateAgent,
 } from "./api";
 import type { CreateAgentRequest, UpdateAgentRequest } from "./types";
@@ -59,6 +63,51 @@ export function useDeleteAgent() {
     mutationFn: (name: string) => deleteAgent(name),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function useAgentSkills(name: string | null | undefined) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["agents", name, "skills"],
+    queryFn: () => getAgentSkills(name!),
+    enabled: !!name,
+  });
+  return { data: data ?? { managed: false, skills: [] }, isLoading, error };
+}
+
+export function useUpdateAgentSkills() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, skills }: { name: string; skills: string[] }) =>
+      updateAgentSkills(name, skills),
+    onSuccess: (_data, { name }) => {
+      void queryClient.invalidateQueries({ queryKey: ["agents", name, "skills"] });
+    },
+  });
+}
+
+export function useAgentTools(name: string | null | undefined) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["agents", name, "tools"],
+    queryFn: () => getAgentTools(name!),
+    enabled: !!name,
+  });
+  return { data: data ?? { managed: false, tools: [] }, isLoading, error };
+}
+
+export function useUpdateAgentTools() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      toolGroups,
+    }: {
+      name: string;
+      toolGroups: string[];
+    }) => updateAgentTools(name, toolGroups),
+    onSuccess: (_data, { name }) => {
+      void queryClient.invalidateQueries({ queryKey: ["agents", name, "tools"] });
     },
   });
 }
