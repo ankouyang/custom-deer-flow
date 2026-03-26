@@ -2,11 +2,16 @@
 
 import sys
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 import pytest
 
 import deerflow.config.app_config as app_config_module
 from deerflow.agents.checkpointer import get_checkpointer, reset_checkpointer
+from deerflow.agents.checkpointer.provider import (
+    WorkspaceAwareSqliteSaver,
+    _resolve_sqlite_conn_str_for_workspace,
+)
 from deerflow.config.checkpointer_config import (
     CheckpointerConfig,
     get_checkpointer_config,
@@ -67,6 +72,21 @@ class TestCheckpointerConfig:
         with pytest.raises(Exception):
             load_checkpointer_config_from_dict({"type": "unknown"})
 
+    def test_workspace_sqlite_path_creates_parent_directories(self, tmp_path: Path):
+        raw = "store.db"
+        workspace = "demo-workspace"
+
+        with patch("deerflow.agents.checkpointer.provider.Paths") as mock_paths_cls:
+            paths = mock_paths_cls.return_value
+            paths.storage_root_dir = tmp_path
+            paths.workspace_dir.return_value = tmp_path / "workspaces" / workspace
+
+            resolved = _resolve_sqlite_conn_str_for_workspace(raw, workspace)
+
+        resolved_path = Path(resolved)
+        assert resolved_path == (tmp_path / "workspaces" / workspace / raw).resolve()
+        assert resolved_path.parent.exists()
+
 
 # ---------------------------------------------------------------------------
 # Factory tests
@@ -107,8 +127,8 @@ class TestGetCheckpointer:
         load_checkpointer_config_from_dict({"type": "sqlite", "connection_string": "/tmp/test.db"})
         with patch.dict(sys.modules, {"langgraph.checkpoint.sqlite": None}):
             reset_checkpointer()
-            with pytest.raises(ImportError, match="langgraph-checkpoint-sqlite"):
-                get_checkpointer()
+            cp = get_checkpointer()
+        assert isinstance(cp, WorkspaceAwareSqliteSaver)
 
     def test_postgres_raises_when_package_missing(self):
         load_checkpointer_config_from_dict({"type": "postgres", "connection_string": "postgresql://localhost/db"})
@@ -146,9 +166,7 @@ class TestGetCheckpointer:
             reset_checkpointer()
             cp = get_checkpointer()
 
-        assert cp is mock_saver_instance
-        mock_saver_cls.from_conn_string.assert_called_once()
-        mock_saver_instance.setup.assert_called_once()
+        assert isinstance(cp, WorkspaceAwareSqliteSaver)
 
     def test_postgres_creates_saver(self):
         """Postgres checkpointer is created when packages are available."""

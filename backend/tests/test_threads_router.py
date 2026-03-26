@@ -107,3 +107,41 @@ def test_delete_thread_data_returns_generic_500_error(tmp_path):
     assert exc_info.value.detail == "Failed to delete local thread data."
     assert "/secret/path" not in exc_info.value.detail
     log_exception.assert_called_once_with("Failed to delete thread data for %s", "thread-cleanup")
+
+
+def test_thread_dir_prefers_agent_scoped_path_when_scope_exists(tmp_path, monkeypatch):
+    paths = Paths(tmp_path)
+
+    monkeypatch.setattr(
+        "deerflow.config.paths.get_thread_scope",
+        lambda thread_id: {
+            "workspace": "demo",
+            "agentName": "default-agent",
+        },
+    )
+    monkeypatch.setattr("deerflow.config.paths.get_current_workspace", lambda: None)
+    monkeypatch.setattr("deerflow.config.paths.get_workspace_for_thread", lambda thread_id: "demo")
+
+    thread_dir = paths.thread_dir("thread-agent-scoped")
+
+    assert thread_dir == tmp_path / "workspaces" / "demo" / "agents" / "default-agent" / "threads" / "thread-agent-scoped"
+
+
+def test_thread_dir_falls_back_to_legacy_path_when_agent_path_missing(tmp_path, monkeypatch):
+    paths = Paths(tmp_path)
+    legacy_dir = tmp_path / "workspaces" / "demo" / "threads" / "thread-legacy"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        "deerflow.config.paths.get_thread_scope",
+        lambda thread_id: {
+            "workspace": "demo",
+            "agentName": "default-agent",
+        },
+    )
+    monkeypatch.setattr("deerflow.config.paths.get_current_workspace", lambda: None)
+    monkeypatch.setattr("deerflow.config.paths.get_workspace_for_thread", lambda thread_id: "demo")
+
+    thread_dir = paths.thread_dir("thread-legacy")
+
+    assert thread_dir == legacy_dir

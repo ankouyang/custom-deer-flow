@@ -57,7 +57,9 @@ def _resolve_sqlite_conn_str(raw: str) -> str:
     """
     if raw == ":memory:" or raw.startswith("file:"):
         return raw
-    return str(resolve_path(raw))
+    resolved = resolve_path(raw)
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return str(resolved)
 
 
 def _extract_thread_id(config) -> str | None:
@@ -95,11 +97,14 @@ def _resolve_sqlite_conn_str_for_workspace(raw: str, workspace: str | None) -> s
 
     path = Path(raw)
     if path.is_absolute():
+        path.parent.mkdir(parents=True, exist_ok=True)
         return str(path)
 
     paths = Paths()
     root = paths.workspace_dir(workspace) if workspace else paths.storage_root_dir
-    return str((root / path).resolve())
+    resolved = (root / path).resolve()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return str(resolved)
 
 
 class WorkspaceAwareSqliteSaver:

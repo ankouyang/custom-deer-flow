@@ -117,12 +117,15 @@ export async function checkAgentName(
   name: string,
 ): Promise<{ available: boolean; name: string }> {
   const res = await fetch(
-    `${getBackendBaseURL()}/api/agents/check?name=${encodeURIComponent(name)}`,
+    `${getBackendBaseURL()}/api/workspaces/current/agents/check?name=${encodeURIComponent(name)}`,
   );
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
+    const err = (await res.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+    };
     throw new Error(
-      err.detail ?? `Failed to check agent name: ${res.statusText}`,
+      err.detail ?? err.error ?? `Failed to check agent name: ${res.statusText}`,
     );
   }
   return res.json() as Promise<{ available: boolean; name: string }>;

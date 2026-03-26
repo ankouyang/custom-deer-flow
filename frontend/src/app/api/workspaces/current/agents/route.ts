@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getServerSession } from "@/server/auth/session";
-import { createWorkspaceAgent, syncWorkspaceAgents } from "@/server/workspace-agents";
+import { createWorkspaceAgent, listWorkspaceAgents } from "@/server/workspace-agents";
 
 export const runtime = "nodejs";
 
@@ -11,10 +11,8 @@ export async function GET() {
     return NextResponse.json({ agents: [] }, { status: 401 });
   }
 
-  const agents = await syncWorkspaceAgents(session);
-
   return NextResponse.json({
-    agents,
+    agents: await listWorkspaceAgents(session),
   });
 }
 

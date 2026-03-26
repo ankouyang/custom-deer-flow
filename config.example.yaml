@@ -386,9 +386,9 @@ summarization:
   # Context retention policy after summarization
   # Specifies how much recent history to preserve
   keep:
-    # Keep the most recent 10 messages (recommended)
+    # Keep the most recent 30 messages so the visible transcript remains stable
     type: messages
-    value: 10
+    value: 30
     # Alternative: Keep specific token count
     # type: tokens
     # value: 3000

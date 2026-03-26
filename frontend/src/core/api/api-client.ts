@@ -15,6 +15,19 @@ function isNotFoundError(error: unknown): boolean {
   return /\b404\b/.test(error.message) || /not found/i.test(error.message);
 }
 
+function isRecoverableStateError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    /\b404\b/.test(error.message) ||
+    /\b500\b/.test(error.message) ||
+    /not found/i.test(error.message) ||
+    /state/i.test(error.message)
+  );
+}
+
 function createCompatibleClient(isMock?: boolean): LangGraphClient {
   const client = new LangGraphClient({
     apiUrl: getLangGraphBaseURL(isMock),
@@ -41,20 +54,36 @@ function createCompatibleClient(isMock?: boolean): LangGraphClient {
     try {
       return await originalGetState(threadId, checkpoint, options);
     } catch (error) {
-      if (checkpoint != null || !isNotFoundError(error)) {
+      if (checkpoint != null || !isRecoverableStateError(error)) {
         throw error;
       }
 
-      const fallback = await client.threads.search({
-        ids: [threadId],
-        limit: 1,
-        select: ["thread_id", "values", "metadata", "updated_at"],
-        signal: options?.signal,
-      });
+      let fallback: Array<{
+        thread_id: string;
+        values?: Record<string, unknown>;
+        metadata?: Record<string, unknown> | null;
+        updated_at?: string | null;
+      }> = [];
+      try {
+        fallback = await client.threads.search({
+          ids: [threadId],
+          limit: 1,
+          select: ["thread_id", "values", "metadata", "updated_at"],
+          signal: options?.signal,
+        });
+      } catch {
+        if (isNotFoundError(error)) {
+          throw error;
+        }
+        throw new Error(`thread ${threadId} not found`);
+      }
 
       const thread = fallback[0];
       if (!thread) {
-        throw error;
+        if (isNotFoundError(error)) {
+          throw error;
+        }
+        throw new Error(`thread ${threadId} not found`);
       }
 
       return {

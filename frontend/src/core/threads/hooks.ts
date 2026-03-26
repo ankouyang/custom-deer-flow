@@ -439,6 +439,61 @@ export function useThreads(
   return useQuery<AgentThread[]>({
     queryKey: ["threads", "search", params, options?.agentName ?? null],
     queryFn: async () => {
+      const persistedUrl = new URL(
+        "/api/workspaces/current/threads",
+        window.location.origin,
+      );
+      if (options?.agentName) {
+        persistedUrl.searchParams.set("agent_slug", options.agentName);
+      }
+      persistedUrl.searchParams.set("status", "ACTIVE");
+
+      const persistedResponse = await fetch(persistedUrl.toString());
+      if (persistedResponse.ok) {
+        const persistedPayload = (await persistedResponse.json().catch(() => null)) as
+          | {
+              threads?: Array<{
+                id: string;
+                title?: string | null;
+                createdAt?: string | null;
+                updatedAt?: string | null;
+                agent?: {
+                  slug?: string | null;
+                  id?: string | null;
+                } | null;
+              }>;
+            }
+          | null;
+
+        const persistedThreads = persistedPayload?.threads ?? [];
+        if (persistedThreads.length > 0) {
+          return persistedThreads.map(
+            (thread) =>
+              ({
+                thread_id: thread.id,
+                created_at: thread.createdAt ?? undefined,
+                updated_at: thread.updatedAt ?? undefined,
+                state_updated_at: thread.updatedAt ?? undefined,
+                values: {
+                  title: thread.title ?? "Untitled",
+                  messages: [],
+                  artifacts: [],
+                },
+                metadata: {
+                  ...(thread.agent?.slug
+                    ? { agent_name: thread.agent.slug }
+                    : {}),
+                  ...(thread.agent?.id
+                    ? { agent_id: thread.agent.id }
+                    : {}),
+                },
+                interrupts: {},
+                status: "idle",
+              }) as AgentThread,
+          );
+        }
+      }
+
       const maxResults = params.limit;
       const initialOffset = params.offset ?? 0;
       const DEFAULT_PAGE_SIZE = 50;

@@ -7,6 +7,7 @@ import { useCallback } from "react";
 
 import {
   deleteUploadedFile,
+  listPersistedUploadedFiles,
   listUploadedFiles,
   uploadFiles,
   type UploadedFileInfo,
@@ -36,7 +37,29 @@ export function useUploadFiles(threadId: string) {
 export function useUploadedFiles(threadId: string) {
   return useQuery({
     queryKey: ["uploads", "list", threadId],
-    queryFn: () => listUploadedFiles(threadId),
+    queryFn: async () => {
+      try {
+        const persisted = await listPersistedUploadedFiles(threadId);
+        if (persisted.uploads.length > 0) {
+          return {
+            files: persisted.uploads.map((upload) => ({
+              filename: upload.filename,
+              size: upload.sizeBytes ? Number(upload.sizeBytes) : 0,
+              path: upload.path,
+              virtual_path: upload.path,
+              artifact_url: "",
+              mimeType: upload.mimeType ?? undefined,
+              createdAt: upload.createdAt,
+            })) satisfies UploadedFileInfo[],
+            count: persisted.uploads.length,
+          };
+        }
+      } catch {
+        // Fall back to the original filesystem listing for compatibility.
+      }
+
+      return listUploadedFiles(threadId);
+    },
     enabled: !!threadId,
   });
 }

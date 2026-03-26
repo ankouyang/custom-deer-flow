@@ -14,12 +14,45 @@ from deerflow.agents.middlewares.todo_middleware import TodoMiddleware
 from deerflow.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
 from deerflow.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from deerflow.agents.thread_state import ThreadState
-from deerflow.config.agents_config import load_agent_config
+from deerflow.config.agents_config import DEFAULT_AGENT_SLUG, load_agent_config
 from deerflow.config.app_config import get_app_config
 from deerflow.config.summarization_config import get_summarization_config
 from deerflow.models import create_chat_model
 
 logger = logging.getLogger(__name__)
+
+_MIN_SUMMARIZATION_KEEP_MESSAGES = 30
+
+
+def _normalize_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        trimmed = item.strip()
+        if not trimmed or trimmed in seen:
+            continue
+        normalized.append(trimmed)
+        seen.add(trimmed)
+    return normalized
+
+
+def _resolve_runtime_skill_bindings(cfg: dict) -> tuple[bool, set[str] | None]:
+    managed = bool(cfg.get("skill_bindings_managed"))
+    if not managed:
+        return False, None
+    return True, set(_normalize_string_list(cfg.get("allowed_skill_names")))
+
+
+def _resolve_runtime_tool_groups(cfg: dict) -> tuple[bool, list[str] | None]:
+    managed = bool(cfg.get("tool_bindings_managed"))
+    if not managed:
+        return False, None
+    return True, _normalize_string_list(cfg.get("allowed_tool_groups"))
 
 
 def _resolve_model_name(requested_model_name: str | None = None) -> str:
@@ -52,8 +85,17 @@ def _create_summarization_middleware() -> SummarizationMiddleware | None:
         else:
             trigger = config.trigger.to_tuple()
 
-    # Prepare keep parameter
+    # Prepare keep parameter.
+    # Be conservative here: if too few recent messages are retained, the user's
+    # original request disappears from the visible transcript very quickly.
     keep = config.keep.to_tuple()
+    if keep[0] == "messages" and int(keep[1]) < _MIN_SUMMARIZATION_KEEP_MESSAGES:
+        logger.info(
+            "Summarization keep=%s is too small; raising to %s messages to preserve recent raw transcript.",
+            keep[1],
+            _MIN_SUMMARIZATION_KEEP_MESSAGES,
+        )
+        keep = ("messages", _MIN_SUMMARIZATION_KEEP_MESSAGES)
 
     # Prepare model parameter
     if config.model_name:
@@ -273,7 +315,9 @@ def make_lead_agent(config: RunnableConfig):
     subagent_enabled = cfg.get("subagent_enabled", False)
     max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
     is_bootstrap = cfg.get("is_bootstrap", False)
-    agent_name = cfg.get("agent_name")
+    agent_name = None if is_bootstrap else (cfg.get("agent_name") or DEFAULT_AGENT_SLUG)
+    _, allowed_skill_names = _resolve_runtime_skill_bindings(cfg)
+    tool_bindings_managed, allowed_tool_groups = _resolve_runtime_tool_groups(cfg)
 
     agent_config = load_agent_config(agent_name) if not is_bootstrap else None
     # Custom agent model or fallback to global/default model resolution
@@ -292,7 +336,7 @@ def make_lead_agent(config: RunnableConfig):
         thinking_enabled = False
 
     logger.info(
-        "Create Agent(%s) -> thinking_enabled: %s, reasoning_effort: %s, model_name: %s, is_plan_mode: %s, subagent_enabled: %s, max_concurrent_subagents: %s",
+        "Create Agent(%s) -> thinking_enabled: %s, reasoning_effort: %s, model_name: %s, is_plan_mode: %s, subagent_enabled: %s, max_concurrent_subagents: %s, tool_bindings_managed: %s, skill_bindings_managed: %s",
         agent_name or "default",
         thinking_enabled,
         reasoning_effort,
@@ -300,6 +344,8 @@ def make_lead_agent(config: RunnableConfig):
         is_plan_mode,
         subagent_enabled,
         max_concurrent_subagents,
+        tool_bindings_managed,
+        allowed_skill_names is not None,
     )
 
     # Inject run metadata for LangSmith trace tagging
@@ -328,10 +374,17 @@ def make_lead_agent(config: RunnableConfig):
         )
 
     # Default lead agent (unchanged behavior)
+    resolved_tool_groups = allowed_tool_groups if tool_bindings_managed else (agent_config.tool_groups if agent_config else None)
+
     return create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort),
-        tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled),
+        tools=get_available_tools(model_name=model_name, groups=resolved_tool_groups, subagent_enabled=subagent_enabled),
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
-        system_prompt=apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, agent_name=agent_name),
+        system_prompt=apply_prompt_template(
+            subagent_enabled=subagent_enabled,
+            max_concurrent_subagents=max_concurrent_subagents,
+            agent_name=agent_name,
+            available_skills=allowed_skill_names,
+        ),
         state_schema=ThreadState,
     )

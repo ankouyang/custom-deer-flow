@@ -85,6 +85,21 @@ export async function registerThreadScope(params: {
   agentName?: string | null;
 }) {
   const { workspace, threadId, agentId, agentName } = params;
+  const root = workspaceRoot(workspace);
+  const threadRoot = agentName
+    ? path.join(root, "agents", agentName, "threads", threadId)
+    : path.join(root, "threads", threadId);
+
+  await mkdir(path.join(threadRoot, "user-data", "workspace"), {
+    recursive: true,
+  });
+  await mkdir(path.join(threadRoot, "user-data", "uploads"), {
+    recursive: true,
+  });
+  await mkdir(path.join(threadRoot, "user-data", "outputs"), {
+    recursive: true,
+  });
+
   await mkdir(backendStorageRoot(), { recursive: true });
   await writeWorkspaceRegistry(threadId, workspace);
   await writeScopeRegistry(threadId, {

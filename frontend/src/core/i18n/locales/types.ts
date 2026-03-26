@@ -105,6 +105,7 @@ export interface Translations {
   // Sidebar
   sidebar: {
     recentChats: string;
+    agentThreads: string;
     newChat: string;
     chats: string;
     demoChats: string;
@@ -142,6 +143,7 @@ export interface Translations {
   breadcrumb: {
     workspace: string;
     chats: string;
+    agents: string;
   };
 
   // Workspace

@@ -12,11 +12,27 @@ from deerflow.agents.memory.prompt import (
     MEMORY_UPDATE_PROMPT,
     format_conversation_for_update,
 )
+from deerflow.config.agents_config import DEFAULT_AGENT_SLUG
 from deerflow.config.memory_config import get_memory_config
 from deerflow.config.paths import get_paths
+from deerflow.context import get_current_user_context, get_current_workspace
 from deerflow.models import create_chat_model
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_effective_agent_name(agent_name: str | None = None) -> str | None:
+    if agent_name:
+        return agent_name
+
+    user_context = get_current_user_context()
+    if user_context and user_context.agent_name:
+        return user_context.agent_name
+
+    if get_current_workspace():
+        return DEFAULT_AGENT_SLUG
+
+    return None
 
 
 def _get_memory_file_path(agent_name: str | None = None) -> Path:
@@ -29,8 +45,9 @@ def _get_memory_file_path(agent_name: str | None = None) -> Path:
     Returns:
         Path to the memory file.
     """
-    if agent_name is not None:
-        return get_paths().agent_memory_file(agent_name)
+    effective_agent_name = _resolve_effective_agent_name(agent_name)
+    if effective_agent_name is not None:
+        return get_paths().agent_memory_file(effective_agent_name)
 
     config = get_memory_config()
     if config.storage_path:
@@ -38,6 +55,18 @@ def _get_memory_file_path(agent_name: str | None = None) -> Path:
         # Absolute path: use as-is; relative path: resolve against base_dir
         return p if p.is_absolute() else get_paths().base_dir / p
     return get_paths().memory_file
+
+
+def _get_workspace_memory_file_path() -> Path:
+    config = get_memory_config()
+    if config.storage_path:
+        p = Path(config.storage_path)
+        return p if p.is_absolute() else get_paths().base_dir / p
+    return get_paths().memory_file
+
+
+def _get_agent_memory_file_path(agent_name: str) -> Path:
+    return get_paths().agent_memory_file(agent_name)
 
 
 def _create_empty_memory() -> dict[str, Any]:
@@ -94,6 +123,56 @@ def get_memory_data(agent_name: str | None = None) -> dict[str, Any]:
         return memory_data
 
     return cached[0]
+
+
+def get_workspace_memory_data() -> dict[str, Any]:
+    file_path = _get_workspace_memory_file_path()
+    cache_key = str(file_path.resolve())
+
+    try:
+        current_mtime = file_path.stat().st_mtime if file_path.exists() else None
+    except OSError:
+        current_mtime = None
+
+    cached = _memory_cache.get(cache_key)
+    if cached is None or cached[1] != current_mtime:
+        memory_data = _load_memory_from_path(file_path)
+        _memory_cache[cache_key] = (memory_data, current_mtime)
+        return memory_data
+
+    return cached[0]
+
+
+def get_agent_memory_data(agent_name: str | None = None) -> dict[str, Any]:
+    effective_agent_name = _resolve_effective_agent_name(agent_name)
+    if effective_agent_name is None:
+        return _create_empty_memory()
+
+    file_path = _get_agent_memory_file_path(effective_agent_name)
+    cache_key = str(file_path.resolve())
+
+    try:
+        current_mtime = file_path.stat().st_mtime if file_path.exists() else None
+    except OSError:
+        current_mtime = None
+
+    cached = _memory_cache.get(cache_key)
+    if cached is None or cached[1] != current_mtime:
+        memory_data = _load_memory_from_path(file_path)
+        _memory_cache[cache_key] = (memory_data, current_mtime)
+        return memory_data
+
+    return cached[0]
+
+
+def get_layered_memory_data(agent_name: str | None = None) -> dict[str, dict[str, Any] | None]:
+    effective_agent_name = _resolve_effective_agent_name(agent_name)
+    workspace_memory = get_workspace_memory_data()
+    agent_memory = get_agent_memory_data(effective_agent_name) if effective_agent_name else None
+    return {
+        "workspace": workspace_memory,
+        "agent": agent_memory,
+    }
 
 
 def reload_memory_data(agent_name: str | None = None) -> dict[str, Any]:
@@ -165,6 +244,11 @@ def _load_memory_from_file(agent_name: str | None = None) -> dict[str, Any]:
         The memory data dictionary.
     """
     file_path = _get_memory_file_path(agent_name)
+    return _load_memory_from_path(file_path)
+
+
+def _load_memory_from_path(file_path: Path) -> dict[str, Any]:
+    """Load memory data from an explicit file path."""
     cache_key = str(file_path.resolve())
 
     if not file_path.exists():

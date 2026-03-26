@@ -10,6 +10,8 @@ class UserContext:
     email: str
     workspace: str
     name: str | None = None
+    agent_name: str | None = None
+    agent_id: str | None = None
 
 
 _user_context: ContextVar[UserContext | None] = ContextVar(

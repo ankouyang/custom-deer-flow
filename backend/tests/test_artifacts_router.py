@@ -1,6 +1,8 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
 from starlette.requests import Request
 
 import app.gateway.routers.artifacts as artifacts_router
@@ -25,3 +27,27 @@ def test_get_artifact_reads_utf8_text_file_on_windows_locale(tmp_path, monkeypat
 
     assert bytes(response.body).decode("utf-8") == text
     assert response.media_type == "text/plain"
+
+
+def test_get_artifact_propagates_access_denied(monkeypatch) -> None:
+    monkeypatch.setattr(
+        artifacts_router,
+        "resolve_thread_virtual_path",
+        lambda _thread_id, _path: (_ for _ in ()).throw(
+            HTTPException(status_code=403, detail="Access denied: thread does not belong to the current agent."),
+        ),
+    )
+
+    request = Request({"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""})
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            artifacts_router.get_artifact(
+                "thread-1",
+                "mnt/user-data/outputs/note.txt",
+                request,
+            ),
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "current agent" in exc_info.value.detail

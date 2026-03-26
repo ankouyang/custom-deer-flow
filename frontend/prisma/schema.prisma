@@ -19,6 +19,8 @@ model User {
   ownedWorkspaces    Workspace[]       @relation("WorkspaceOwner")
   memberships        WorkspaceMember[]
   createdAgents      Agent[]           @relation("AgentCreator")
+  createdThreads     Thread[]          @relation("ThreadCreator")
+  uploadedFiles      ThreadUpload[]    @relation("ThreadUploadCreator")
   defaultWorkspace   Workspace?        @relation("UserDefaultWorkspace", fields: [defaultWorkspaceId], references: [id], onDelete: SetNull)
 }
 
@@ -43,6 +45,11 @@ model Workspace {
   members         WorkspaceMember[]
   agents          Agent[]            @relation("WorkspaceAgents")
   memory          WorkspaceMemory?
+  threads         Thread[]
+  agentSkills     AgentSkill[]
+  agentTools      AgentTool[]
+  threadArtifacts ThreadArtifact[]
+  threadUploads   ThreadUpload[]
 }
 
 model WorkspaceMember {
@@ -77,6 +84,11 @@ model Agent {
   creator           User          @relation("AgentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
   config            AgentConfig?
   memory            AgentMemory?
+  threads           Thread[]
+  skills            AgentSkill[]
+  tools             AgentTool[]
+  artifacts         ThreadArtifact[]
+  uploads           ThreadUpload[]
 
   @@unique([workspaceId, slug])
 }
@@ -111,6 +123,96 @@ model AgentMemory {
   memoryJson           Json
   updatedAt            DateTime @updatedAt
   agent                Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model Thread {
+  id            String       @id @default(cuid())
+  workspaceId   String
+  agentId       String
+  title         String?
+  status        ThreadStatus @default(ACTIVE)
+  createdBy     String
+  archivedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent         Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  creator       User         @relation("ThreadCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  artifacts     ThreadArtifact[]
+  uploads       ThreadUpload[]
+
+  @@index([workspaceId, agentId, updatedAt(sort: Desc)])
+  @@index([agentId, updatedAt(sort: Desc)])
+}
+
+model AgentSkill {
+  id          String     @id @default(cuid())
+  workspaceId String
+  agentId     String
+  skillName   String
+  skillScope  SkillScope
+  enabled     Boolean    @default(true)
+  configJson  Json       @default("{}")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent       Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, skillName, skillScope])
+  @@index([agentId, enabled])
+}
+
+model AgentTool {
+  id          String    @id @default(cuid())
+  workspaceId String
+  agentId     String
+  toolName    String
+  toolGroup   String
+  enabled     Boolean   @default(true)
+  policyJson  Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent       Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, toolName])
+  @@index([agentId, enabled])
+}
+
+model ThreadArtifact {
+  id         String       @id @default(cuid())
+  workspaceId String
+  agentId    String
+  threadId   String
+  path       String
+  kind       ArtifactKind
+  mimeType   String?
+  sizeBytes  BigInt?
+  createdAt  DateTime     @default(now())
+  workspace  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent      Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread     Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+}
+
+model ThreadUpload {
+  id         String    @id @default(cuid())
+  workspaceId String
+  agentId    String
+  threadId   String
+  filename   String
+  path       String
+  mimeType   String?
+  sizeBytes  BigInt?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent      Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread     Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  creator    User      @relation("ThreadUploadCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
 }
 
 enum WorkspaceStatus {
@@ -148,4 +250,23 @@ enum AgentStatus {
   ACTIVE
   DISABLED
   ARCHIVED
+}
+
+enum ThreadStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum SkillScope {
+  PLATFORM_PUBLIC
+  WORKSPACE_PRIVATE
+  AGENT_PRIVATE
+}
+
+enum ArtifactKind {
+  OUTPUT
+  UPLOAD
+  GENERATED
+  PREVIEW
 }

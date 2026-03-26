@@ -2,7 +2,11 @@
 
 import math
 
-from deerflow.agents.memory.prompt import _coerce_confidence, format_memory_for_injection
+from deerflow.agents.memory.prompt import (
+    _coerce_confidence,
+    format_layered_memory_for_injection,
+    format_memory_for_injection,
+)
 
 
 def test_format_memory_includes_facts_section() -> None:
@@ -120,3 +124,32 @@ def test_format_memory_skips_non_string_content_facts() -> None:
     assert "| 0.85]" not in result
     assert "Valid fact" in result
 
+
+def test_format_layered_memory_includes_workspace_and_agent_sections() -> None:
+    workspace_memory = {
+        "user": {
+            "workContext": {
+                "summary": "Shared workspace context",
+            }
+        },
+        "history": {},
+        "facts": [],
+    }
+    agent_memory = {
+        "user": {},
+        "history": {},
+        "facts": [
+            {"content": "Agent-only fact", "category": "knowledge", "confidence": 0.9},
+        ],
+    }
+
+    result = format_layered_memory_for_injection(
+        workspace_memory,
+        agent_memory,
+        max_tokens=2000,
+    )
+
+    assert "Workspace Shared Memory:" in result
+    assert "Shared workspace context" in result
+    assert "Agent Private Memory:" in result
+    assert "Agent-only fact" in result

@@ -1,6 +1,7 @@
 "use client";
 
 import { Streamdown } from "streamdown";
+import { useParams } from "next/navigation";
 
 import { useI18n } from "@/core/i18n/hooks";
 import { useMemory } from "@/core/memory/hooks";
@@ -54,6 +55,7 @@ function formatMemorySection(
 function memoryToMarkdown(
   memory: UserMemory,
   t: ReturnType<typeof useI18n>["t"],
+  agentName?: string | null,
 ) {
   const parts: string[] = [];
 
@@ -130,7 +132,7 @@ function memoryToMarkdown(
             t.settings.memory.markdown.table.confidenceLevel[key];
           const confidenceText =
             typeof value === "number" ? `${levelLabel}` : levelLabel;
-          return `| ${upperFirst(f.category)} | ${confidenceText} | ${f.content} | [${t.settings.memory.markdown.table.view}](${pathOfThread(f.source)}) | ${formatTimeAgo(f.createdAt)} |`;
+          return `| ${upperFirst(f.category)} | ${confidenceText} | ${f.content} | [${t.settings.memory.markdown.table.view}](${pathOfThread(f.source, { agentName: agentName ?? null })}) | ${formatTimeAgo(f.createdAt)} |`;
         }),
       ].join("\n"),
     );
@@ -157,7 +159,8 @@ function memoryToMarkdown(
 
 export function MemorySettingsPage() {
   const { t } = useI18n();
-  const { memory, isLoading, error } = useMemory();
+  const { agent_name: agentName } = useParams<{ agent_name?: string }>();
+  const { memory, isLoading, error } = useMemory(agentName ?? null);
   return (
     <SettingsSection
       title={t.settings.memory.title}
@@ -177,7 +180,7 @@ export function MemorySettingsPage() {
             className="size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
             {...streamdownPlugins}
           >
-            {memoryToMarkdown(memory, t)}
+            {memoryToMarkdown(memory, t, agentName ?? null)}
           </Streamdown>
         </div>
       )}

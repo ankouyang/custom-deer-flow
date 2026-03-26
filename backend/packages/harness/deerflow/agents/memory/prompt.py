@@ -300,6 +300,39 @@ def format_memory_for_injection(memory_data: dict[str, Any], max_tokens: int = 2
     return result
 
 
+def format_layered_memory_for_injection(
+    workspace_memory_data: dict[str, Any] | None,
+    agent_memory_data: dict[str, Any] | None,
+    max_tokens: int = 2000,
+) -> str:
+    """Format workspace-shared and agent-private memory into one injected block."""
+    sections: list[str] = []
+
+    has_agent_memory = bool(agent_memory_data)
+    workspace_budget = max_tokens if not has_agent_memory else max(int(max_tokens * 0.4), 1)
+    workspace_content = format_memory_for_injection(workspace_memory_data or {}, max_tokens=workspace_budget)
+    if workspace_content.strip():
+        sections.append(f"Workspace Shared Memory:\n{workspace_content}")
+
+    remaining_budget = max_tokens - _count_tokens("\n\n".join(sections)) if sections else max_tokens
+    remaining_budget = max(remaining_budget, 1)
+    agent_content = format_memory_for_injection(agent_memory_data or {}, max_tokens=remaining_budget)
+    if agent_content.strip():
+        sections.append(f"Agent Private Memory:\n{agent_content}")
+
+    if not sections:
+        return ""
+
+    result = "\n\n".join(sections)
+    token_count = _count_tokens(result)
+    if token_count > max_tokens:
+        char_per_token = len(result) / token_count
+        target_chars = int(max_tokens * char_per_token * 0.95)
+        result = result[:target_chars] + "\n..."
+
+    return result
+
+
 def format_conversation_for_update(messages: list[Any]) -> str:
     """Format conversation messages for memory update prompt.
 

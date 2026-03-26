@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { useThread } from "@/components/workspace/messages/context";
 
+import { listPersistedArtifacts } from "./api";
 import { loadArtifactContent, loadArtifactContentFromToolCall } from "./loader";
 
 export function useArtifactContent({
@@ -35,4 +36,16 @@ export function useArtifactContent({
     staleTime: 5 * 60 * 1000,
   });
   return { content: isWriteFile ? content : data, isLoading, error };
+}
+
+export function usePersistedArtifacts(threadId: string) {
+  return useQuery({
+    queryKey: ["thread-artifacts", threadId],
+    queryFn: async () => {
+      const result = await listPersistedArtifacts(threadId);
+      return result.artifacts.map((artifact) => artifact.path);
+    },
+    enabled: !!threadId,
+    staleTime: 30 * 1000,
+  });
 }

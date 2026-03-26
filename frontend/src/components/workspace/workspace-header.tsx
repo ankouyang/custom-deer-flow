@@ -2,7 +2,7 @@
 
 import { LogOut, MessageSquarePlus } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -13,6 +13,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
+import { pathOfNewThread } from "@/core/threads/utils";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ export function WorkspaceHeader({ className }: { className?: string }) {
   const { state } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
+  const { agent_name: agentName } = useParams<{ agent_name?: string }>();
+  const newChatPath = pathOfNewThread({ agentName: agentName ?? null });
 
   async function handleLogout() {
     const response = await fetch("/api/logout", { method: "POST" });
@@ -64,11 +67,8 @@ export function WorkspaceHeader({ className }: { className?: string }) {
       </div>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname === "/workspace/chats/new"}
-            asChild
-          >
-            <Link className="text-muted-foreground" href="/workspace/chats/new">
+          <SidebarMenuButton isActive={pathname === newChatPath} asChild>
+            <Link className="text-muted-foreground" href={newChatPath}>
               <MessageSquarePlus size={16} />
               <span>{t.sidebar.newChat}</span>
             </Link>

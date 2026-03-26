@@ -1,9 +1,17 @@
 import { env } from "@/env";
 import { db } from "@/server/db";
 import type { AppSession } from "@/server/auth/session";
+import { getWorkspaceAgentRuntimeBindings } from "@/server/workspace-agents";
 
 type ProxyTarget = "gateway" | "langgraph";
 const DEV_PROXY_SECRET = "deerflow-dev-proxy-secret";
+const DEFAULT_AGENT_SLUG = "default-agent";
+type AgentRuntimeBindings = {
+  skillBindingsManaged: boolean;
+  allowedSkillNames: string[] | null;
+  toolBindingsManaged: boolean;
+  allowedToolGroups: string[] | null;
+};
 
 function resolveBaseUrl(target: ProxyTarget): string {
   // Server-side proxying must target the internal services directly.
@@ -21,6 +29,20 @@ function ensureJsonObject(
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function extractAgentSlugFromReferer(referer: string | null): string | null {
+  if (!referer) {
+    return null;
+  }
+
+  try {
+    const pathname = new URL(referer).pathname;
+    const match = pathname.match(/^\/workspace\/agents\/([^/]+)(?:\/|$)/);
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveAgentForRequest(
@@ -79,9 +101,42 @@ export async function buildProxyRequest(
     headers.set("x-deerflow-user-name", session.name);
   }
 
-  let body: BodyInit | undefined;
+  const requestUrl = new URL(request.url);
+  const requestedAgentNameFromQuery =
+    requestUrl.searchParams.get("agent_name")?.trim() || null;
+  const requestedAgentNameFromReferer = extractAgentSlugFromReferer(
+    request.headers.get("referer"),
+  );
+  let requestedAgentName =
+    requestedAgentNameFromQuery ?? requestedAgentNameFromReferer ?? null;
+  if (target === "langgraph" && !requestedAgentName) {
+    requestedAgentName = DEFAULT_AGENT_SLUG;
+  }
   let resolvedAgentName: string | null = null;
   let resolvedAgentId: string | null = null;
+  const preResolvedAgent = await resolveAgentForRequest(session, requestedAgentName);
+  if (preResolvedAgent) {
+    resolvedAgentName = preResolvedAgent.slug;
+    resolvedAgentId = preResolvedAgent.id;
+    requestedAgentName = preResolvedAgent.slug;
+  } else if (requestedAgentName) {
+    resolvedAgentName = requestedAgentName;
+  }
+
+  if (resolvedAgentName) {
+    headers.set("x-deerflow-agent-name", resolvedAgentName);
+  } else {
+    headers.delete("x-deerflow-agent-name");
+  }
+  if (resolvedAgentId) {
+    headers.set("x-deerflow-agent-id", resolvedAgentId);
+  } else {
+    headers.delete("x-deerflow-agent-id");
+  }
+
+  let runtimeBindings: AgentRuntimeBindings | null = null;
+
+  let body: BodyInit | undefined;
   const contentType = headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
 
@@ -90,17 +145,29 @@ export async function buildProxyRequest(
       const parsed = ensureJsonObject(await request.json().catch(() => ({})));
       const context = ensureJsonObject(parsed.context);
       const metadata = ensureJsonObject(parsed.metadata);
-      const requestedAgentName =
+      const requestedAgentNameFromBody =
         (typeof context.agent_name === "string" && context.agent_name) ||
         (typeof metadata.agent_name === "string" && metadata.agent_name) ||
         null;
-      const agent = await resolveAgentForRequest(session, requestedAgentName);
+      const agent = await resolveAgentForRequest(
+        session,
+        requestedAgentNameFromBody ?? requestedAgentName,
+      );
+      if (target === "langgraph" && agent?.id) {
+        runtimeBindings = await getWorkspaceAgentRuntimeBindings(
+          session,
+          agent.id,
+        );
+      } else {
+        runtimeBindings = null;
+      }
 
       metadata.user_id = session.userId;
       metadata.user_email = session.email;
       metadata.workspace = session.workspace;
-      if (requestedAgentName) {
-        metadata.agent_name = agent?.slug ?? requestedAgentName;
+      if (requestedAgentNameFromBody ?? requestedAgentName) {
+        metadata.agent_name =
+          agent?.slug ?? requestedAgentNameFromBody ?? requestedAgentName;
       }
       if (agent?.id) {
         metadata.agent_id = agent.id;
@@ -112,23 +179,52 @@ export async function buildProxyRequest(
         context.user_email = session.email;
         context.user_name = session.name;
         context.workspace = session.workspace;
-        if (requestedAgentName) {
-          context.agent_name = agent?.slug ?? requestedAgentName;
+        if (requestedAgentNameFromBody ?? requestedAgentName) {
+          context.agent_name =
+            agent?.slug ?? requestedAgentNameFromBody ?? requestedAgentName;
         }
         if (agent?.id) {
           context.agent_id = agent.id;
         }
+        if (runtimeBindings?.skillBindingsManaged) {
+          context.allowed_skill_names = runtimeBindings.allowedSkillNames ?? [];
+          context.skill_bindings_managed = true;
+        }
+        if (runtimeBindings?.toolBindingsManaged) {
+          context.allowed_tool_groups = runtimeBindings.allowedToolGroups ?? [];
+          context.tool_bindings_managed = true;
+        }
         parsed.context = context;
+      }
+
+      if (runtimeBindings?.skillBindingsManaged) {
+        metadata.allowed_skill_names = runtimeBindings.allowedSkillNames ?? [];
+        metadata.skill_bindings_managed = true;
+      }
+      if (runtimeBindings?.toolBindingsManaged) {
+        metadata.allowed_tool_groups = runtimeBindings.allowedToolGroups ?? [];
+        metadata.tool_bindings_managed = true;
       }
 
       resolvedAgentName =
         (typeof metadata.agent_name === "string" && metadata.agent_name) ||
         (typeof context.agent_name === "string" && context.agent_name) ||
-        null;
+        resolvedAgentName;
       resolvedAgentId =
         (typeof metadata.agent_id === "string" && metadata.agent_id) ||
         (typeof context.agent_id === "string" && context.agent_id) ||
-        null;
+        resolvedAgentId;
+
+      if (resolvedAgentName) {
+        headers.set("x-deerflow-agent-name", resolvedAgentName);
+      } else {
+        headers.delete("x-deerflow-agent-name");
+      }
+      if (resolvedAgentId) {
+        headers.set("x-deerflow-agent-id", resolvedAgentId);
+      } else {
+        headers.delete("x-deerflow-agent-id");
+      }
 
       body = JSON.stringify(parsed);
     } else {

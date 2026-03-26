@@ -17,6 +17,8 @@ USER_ID_HEADER = "x-deerflow-user-id"
 USER_EMAIL_HEADER = "x-deerflow-user-email"
 USER_NAME_HEADER = "x-deerflow-user-name"
 WORKSPACE_HEADER = "x-deerflow-workspace"
+AGENT_NAME_HEADER = "x-deerflow-agent-name"
+AGENT_ID_HEADER = "x-deerflow-agent-id"
 
 load_dotenv()
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
@@ -47,6 +49,8 @@ def build_user_context(request: Request) -> UserContext:
     email = request.headers.get(USER_EMAIL_HEADER, "").strip()
     workspace = request.headers.get(WORKSPACE_HEADER, "").strip()
     name = request.headers.get(USER_NAME_HEADER, "").strip() or None
+    agent_name = request.headers.get(AGENT_NAME_HEADER, "").strip() or None
+    agent_id = request.headers.get(AGENT_ID_HEADER, "").strip() or None
 
     if not user_id or not email or not workspace:
         raise HTTPException(
@@ -59,6 +63,8 @@ def build_user_context(request: Request) -> UserContext:
         email=email,
         name=name,
         workspace=Paths.normalize_workspace(workspace),
+        agent_name=agent_name,
+        agent_id=agent_id,
     )
 
 

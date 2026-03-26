@@ -5,7 +5,7 @@ import {
   MessageSquarePlusIcon,
   SettingsIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import {
@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/core/i18n/hooks";
+import { pathOfNewThread } from "@/core/threads/utils";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
 import { SettingsDialog } from "./settings";
@@ -32,14 +33,15 @@ import { SettingsDialog } from "./settings";
 export function CommandPalette() {
   const { t } = useI18n();
   const router = useRouter();
+  const { agent_name: agentName } = useParams<{ agent_name?: string }>();
   const [open, setOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleNewChat = useCallback(() => {
-    router.push("/workspace/chats/new");
+    router.push(pathOfNewThread({ agentName: agentName ?? null }));
     setOpen(false);
-  }, [router]);
+  }, [agentName, router]);
 
   const handleOpenSettings = useCallback(() => {
     setOpen(false);

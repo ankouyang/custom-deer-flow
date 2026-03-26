@@ -29,6 +29,19 @@ export interface ListFilesResponse {
   count: number;
 }
 
+export interface PersistedUploadInfo {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  threadId: string;
+  filename: string;
+  path: string;
+  mimeType: string | null;
+  sizeBytes: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
 async function readErrorDetail(
   response: Response,
   fallback: string,
@@ -80,6 +93,22 @@ export async function listUploadedFiles(
   if (!response.ok) {
     throw new Error(
       await readErrorDetail(response, "Failed to list uploaded files"),
+    );
+  }
+
+  return response.json();
+}
+
+export async function listPersistedUploadedFiles(
+  threadId: string,
+): Promise<{ uploads: PersistedUploadInfo[] }> {
+  const response = await fetch(
+    `${window.location.origin}/api/workspaces/current/threads/${encodeURIComponent(threadId)}/uploads`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorDetail(response, "Failed to list persisted uploaded files"),
     );
   }
 

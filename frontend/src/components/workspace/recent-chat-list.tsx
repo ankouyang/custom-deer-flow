@@ -165,7 +165,7 @@ export function RecentChatList() {
       <SidebarGroup>
         <SidebarGroupLabel>
           {agentName
-            ? `Agent Threads`
+            ? t.sidebar.agentThreads
             : env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true"
               ? t.sidebar.recentChats
               : t.sidebar.demoChats}

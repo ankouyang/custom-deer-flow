@@ -178,6 +178,16 @@ class TestLoadAgentConfig:
 
         assert cfg.name == "legacy-agent"
 
+    def test_default_agent_without_local_files_returns_minimal_config(self, tmp_path):
+        with patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path)):
+            from deerflow.config.agents_config import DEFAULT_AGENT_SLUG, load_agent_config
+
+            cfg = load_agent_config(DEFAULT_AGENT_SLUG)
+
+        assert cfg.name == "default-agent"
+        assert cfg.description == ""
+        assert cfg.model is None
+
 
 # ===========================================================================
 # 4. load_agent_soul

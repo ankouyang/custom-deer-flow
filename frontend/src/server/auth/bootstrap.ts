@@ -1,4 +1,6 @@
 import type { Agent, Prisma, User, Workspace } from "@prisma/client";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { db } from "@/server/db";
 
@@ -38,6 +40,43 @@ function emptyMemoryPayload() {
   } satisfies Prisma.InputJsonValue;
 }
 
+function workspaceStorageRoot(workspaceSlug: string) {
+  return path.resolve(
+    process.cwd(),
+    "../backend/.deer-flow/workspaces",
+    workspaceSlug,
+  );
+}
+
+async function ensureDefaultAgentWorkspaceScaffold(workspaceSlug: string) {
+  const root = workspaceStorageRoot(workspaceSlug);
+  const agentRoot = path.join(root, "agents", DEFAULT_AGENT_SLUG);
+
+  await mkdir(agentRoot, { recursive: true });
+  const files = [
+    {
+      path: path.join(agentRoot, "config.yaml"),
+      content: `name: ${DEFAULT_AGENT_SLUG}\ndescription: "Default platform agent for this workspace."\n`,
+    },
+    {
+      path: path.join(agentRoot, "SOUL.md"),
+      content: "",
+    },
+    {
+      path: path.join(agentRoot, "memory.json"),
+      content: JSON.stringify(emptyMemoryPayload(), null, 2),
+    },
+  ];
+
+  for (const file of files) {
+    try {
+      await access(file.path);
+    } catch {
+      await writeFile(file.path, file.content, "utf-8");
+    }
+  }
+}
+
 export async function bootstrapWorkspaceForUser(params: {
   userId: string;
   email: string;
@@ -46,7 +85,7 @@ export async function bootstrapWorkspaceForUser(params: {
 }): Promise<BootstrapResult> {
   const { userId, email, name, workspaceSlug } = params;
 
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const workspace = await tx.workspace.create({
       data: {
         ownerUserId: userId,
@@ -126,6 +165,9 @@ export async function bootstrapWorkspaceForUser(params: {
       defaultAgent,
     };
   });
+
+  await ensureDefaultAgentWorkspaceScaffold(workspaceSlug);
+  return result;
 }
 
 export async function getUserDefaultWorkspace(userId: string) {
@@ -162,6 +204,7 @@ export async function ensureWorkspaceBootstrapForUser(user: {
 
   const existing = await getUserDefaultWorkspace(user.id);
   if (existing) {
+    await ensureDefaultAgentWorkspaceScaffold(existing.slug);
     if (user.defaultWorkspaceId !== existing.id) {
       await db.user.update({
         where: { id: user.id },

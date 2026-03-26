@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 SOUL_FILENAME = "SOUL.md"
 AGENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
+DEFAULT_AGENT_SLUG = "default-agent"
 
 
 class AgentConfig(BaseModel):
@@ -46,8 +47,14 @@ def load_agent_config(name: str | None) -> AgentConfig | None:
     agent_dir = get_paths().agent_dir(name)
     config_file = agent_dir / "config.yaml"
 
+    if name == DEFAULT_AGENT_SLUG and not agent_dir.exists():
+        return AgentConfig(name=name)
+
     if not agent_dir.exists():
         raise FileNotFoundError(f"Agent directory not found: {agent_dir}")
+
+    if name == DEFAULT_AGENT_SLUG and not config_file.exists():
+        return AgentConfig(name=name)
 
     if not config_file.exists():
         raise FileNotFoundError(f"Agent config not found: {config_file}")

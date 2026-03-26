@@ -13,14 +13,15 @@ export async function GET() {
 
   const workspace = await db.workspace.findUnique({
     where: { id: session.workspaceId },
-    include: {
-      defaultAgent: true,
-      _count: {
-        select: {
-          agents: true,
-          members: true,
-        },
-      },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      ownerUserId: true,
+      defaultAgentId: true,
+      createdAt: true,
+      updatedAt: true,
     },
   });
 
@@ -36,19 +37,10 @@ export async function GET() {
       status: workspace.status,
       ownerUserId: workspace.ownerUserId,
       defaultAgentId: workspace.defaultAgentId,
-      defaultAgent: workspace.defaultAgent
-        ? {
-            id: workspace.defaultAgent.id,
-            name: workspace.defaultAgent.name,
-            slug: workspace.defaultAgent.slug,
-            type: workspace.defaultAgent.type,
-            isDefault: workspace.defaultAgent.isDefault,
-            status: workspace.defaultAgent.status,
-          }
-        : null,
+      defaultAgent: null,
       counts: {
-        agents: workspace._count.agents,
-        members: workspace._count.members,
+        agents: null,
+        members: null,
       },
       createdAt: workspace.createdAt,
       updatedAt: workspace.updatedAt,

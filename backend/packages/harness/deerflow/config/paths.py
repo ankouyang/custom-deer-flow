@@ -5,6 +5,7 @@ from pathlib import Path
 
 from deerflow.context import get_current_workspace
 from deerflow.config.workspace_registry import get_workspace_for_thread
+from deerflow.config.thread_scope_registry import get_thread_scope
 
 # Virtual path prefix seen by agents inside the sandbox
 VIRTUAL_PATH_PREFIX = "/mnt/user-data"
@@ -119,6 +120,11 @@ class Paths:
         """Per-agent memory file: `{base_dir}/agents/{name}/memory.json`."""
         return self.agent_dir(name) / "memory.json"
 
+    def _legacy_thread_dir(self, thread_id: str) -> Path:
+        workspace = get_current_workspace() or get_workspace_for_thread(thread_id)
+        root = self.workspace_dir(workspace) if workspace else self.base_dir
+        return root / "threads" / thread_id
+
     def thread_dir(self, thread_id: str) -> Path:
         """
         Host path for a thread's data: `{base_dir}/threads/{thread_id}/`
@@ -132,9 +138,18 @@ class Paths:
         """
         if not _SAFE_THREAD_ID_RE.match(thread_id):
             raise ValueError(f"Invalid thread_id {thread_id!r}: only alphanumeric characters, hyphens, and underscores are allowed.")
-        workspace = get_current_workspace() or get_workspace_for_thread(thread_id)
-        root = self.workspace_dir(workspace) if workspace else self.base_dir
-        return root / "threads" / thread_id
+        scope = get_thread_scope(thread_id) or {}
+        workspace = get_current_workspace() or scope.get("workspace") or get_workspace_for_thread(thread_id)
+        agent_name = scope.get("agentName")
+
+        if workspace and agent_name:
+            agent_thread_dir = self.workspace_dir(workspace) / "agents" / agent_name.lower() / "threads" / thread_id
+            legacy_thread_dir = self.workspace_dir(workspace) / "threads" / thread_id
+            if legacy_thread_dir.exists() and not agent_thread_dir.exists():
+                return legacy_thread_dir
+            return agent_thread_dir
+
+        return self._legacy_thread_dir(thread_id)
 
     def sandbox_work_dir(self, thread_id: str) -> Path:
         """

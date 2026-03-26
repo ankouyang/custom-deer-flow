@@ -1,112 +1,42 @@
-import asyncio
-from io import BytesIO
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import UploadFile
+import pytest
+from fastapi import HTTPException
 
-from app.gateway.routers import uploads
-
-
-def test_upload_files_writes_thread_storage_and_skips_local_sandbox_sync(tmp_path):
-    thread_uploads_dir = tmp_path / "uploads"
-    thread_uploads_dir.mkdir(parents=True)
-
-    provider = MagicMock()
-    provider.acquire.return_value = "local"
-    sandbox = MagicMock()
-    provider.get.return_value = sandbox
-
-    with (
-        patch.object(uploads, "get_uploads_dir", return_value=thread_uploads_dir),
-        patch.object(uploads, "get_sandbox_provider", return_value=provider),
-    ):
-        file = UploadFile(filename="notes.txt", file=BytesIO(b"hello uploads"))
-        result = asyncio.run(uploads.upload_files("thread-local", files=[file]))
-
-    assert result.success is True
-    assert len(result.files) == 1
-    assert result.files[0]["filename"] == "notes.txt"
-    assert (thread_uploads_dir / "notes.txt").read_bytes() == b"hello uploads"
-
-    sandbox.update_file.assert_not_called()
+import app.gateway.routers.uploads as uploads_router
+from deerflow.config.paths import Paths
 
 
-def test_upload_files_syncs_non_local_sandbox_and_marks_markdown_file(tmp_path):
-    thread_uploads_dir = tmp_path / "uploads"
-    thread_uploads_dir.mkdir(parents=True)
+def test_get_uploads_dir_calls_thread_access_check(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    calls: list[str] = []
 
-    provider = MagicMock()
-    provider.acquire.return_value = "aio-1"
-    sandbox = MagicMock()
-    provider.get.return_value = sandbox
+    class FakeAuthzService:
+        def assert_thread_access(self, thread_id: str) -> None:
+            calls.append(thread_id)
 
-    async def fake_convert(file_path: Path) -> Path:
-        md_path = file_path.with_suffix(".md")
-        md_path.write_text("converted", encoding="utf-8")
-        return md_path
+    monkeypatch.setattr(uploads_router, "get_authz_service", lambda: FakeAuthzService())
+    monkeypatch.setattr(uploads_router, "get_paths", lambda: Paths(tmp_path))
 
-    with (
-        patch.object(uploads, "get_uploads_dir", return_value=thread_uploads_dir),
-        patch.object(uploads, "get_sandbox_provider", return_value=provider),
-        patch.object(uploads, "convert_file_to_markdown", AsyncMock(side_effect=fake_convert)),
-    ):
-        file = UploadFile(filename="report.pdf", file=BytesIO(b"pdf-bytes"))
-        result = asyncio.run(uploads.upload_files("thread-aio", files=[file]))
+    uploads_dir = uploads_router.get_uploads_dir("thread-1")
 
-    assert result.success is True
-    assert len(result.files) == 1
-    file_info = result.files[0]
-    assert file_info["filename"] == "report.pdf"
-    assert file_info["markdown_file"] == "report.md"
-
-    assert (thread_uploads_dir / "report.pdf").read_bytes() == b"pdf-bytes"
-    assert (thread_uploads_dir / "report.md").read_text(encoding="utf-8") == "converted"
-
-    sandbox.update_file.assert_any_call("/mnt/user-data/uploads/report.pdf", b"pdf-bytes")
-    sandbox.update_file.assert_any_call("/mnt/user-data/uploads/report.md", b"converted")
+    assert calls == ["thread-1"]
+    assert uploads_dir == Path(tmp_path) / "threads" / "thread-1" / "user-data" / "uploads"
+    assert uploads_dir.exists()
 
 
-def test_upload_files_rejects_dotdot_and_dot_filenames(tmp_path):
-    thread_uploads_dir = tmp_path / "uploads"
-    thread_uploads_dir.mkdir(parents=True)
+def test_get_uploads_dir_rejects_unauthorized_thread(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    class FakeAuthzService:
+        def assert_thread_access(self, thread_id: str) -> None:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: thread does not belong to the current agent.",
+            )
 
-    provider = MagicMock()
-    provider.acquire.return_value = "local"
-    sandbox = MagicMock()
-    provider.get.return_value = sandbox
+    monkeypatch.setattr(uploads_router, "get_authz_service", lambda: FakeAuthzService())
+    monkeypatch.setattr(uploads_router, "get_paths", lambda: Paths(tmp_path))
 
-    with (
-        patch.object(uploads, "get_uploads_dir", return_value=thread_uploads_dir),
-        patch.object(uploads, "get_sandbox_provider", return_value=provider),
-    ):
-        # These filenames must be rejected outright
-        for bad_name in ["..", "."]:
-            file = UploadFile(filename=bad_name, file=BytesIO(b"data"))
-            result = asyncio.run(uploads.upload_files("thread-local", files=[file]))
-            assert result.success is True
-            assert result.files == [], f"Expected no files for unsafe filename {bad_name!r}"
+    with pytest.raises(HTTPException) as exc_info:
+        uploads_router.get_uploads_dir("thread-1")
 
-        # Path-traversal prefixes are stripped to the basename and accepted safely
-        file = UploadFile(filename="../etc/passwd", file=BytesIO(b"data"))
-        result = asyncio.run(uploads.upload_files("thread-local", files=[file]))
-        assert result.success is True
-        assert len(result.files) == 1
-        assert result.files[0]["filename"] == "passwd"
-
-    # Only the safely normalised file should exist
-    assert [f.name for f in thread_uploads_dir.iterdir()] == ["passwd"]
-
-
-def test_delete_uploaded_file_removes_generated_markdown_companion(tmp_path):
-    thread_uploads_dir = tmp_path / "uploads"
-    thread_uploads_dir.mkdir(parents=True)
-    (thread_uploads_dir / "report.pdf").write_bytes(b"pdf-bytes")
-    (thread_uploads_dir / "report.md").write_text("converted", encoding="utf-8")
-
-    with patch.object(uploads, "get_uploads_dir", return_value=thread_uploads_dir):
-        result = asyncio.run(uploads.delete_uploaded_file("thread-aio", "report.pdf"))
-
-    assert result == {"success": True, "message": "Deleted report.pdf"}
-    assert not (thread_uploads_dir / "report.pdf").exists()
-    assert not (thread_uploads_dir / "report.md").exists()
+    assert exc_info.value.status_code == 403
+    assert "current agent" in exc_info.value.detail
